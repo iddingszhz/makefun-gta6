@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Costa Verde — an open-world crime game</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1420; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* --- HUD --- */
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #eef1f5; z-index: 5; }
+  #hud.dim { opacity: 0.25; }
+  .panel { background: rgba(12, 16, 24, 0.72); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 8px 12px; }
+  #top-right { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  #stars { font-size: 26px; letter-spacing: 3px; color: #ffd34d; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+  #stars.hot { color: #ff5a3c; animation: pulse 0.7s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+  #cash { font-size: 22px; font-weight: 800; color: #7ee787; }
+  #missions, #clock { font-size: 14px; color: #cfd6e2; }
+  #minimap { width: 190px; height: 190px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(12,16,24,0.8); }
+  #bottom-left { position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; width: 240px; }
+  #health-bar { height: 12px; background: rgba(255,255,255,0.16); border-radius: 6px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #4fc3f7; border-radius: 6px; transition: width 0.2s; }
+  #health-fill.low { background: #ff5a3c; }
+  #speed { font-size: 20px; font-weight: 700; }
+  #ammo { font-size: 14px; color: #cfd6e2; }
+  #objective { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); font-size: 15px; font-weight: 600; text-align: center; max-width: 560px; }
+  #banner { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); font-size: 20px; font-weight: 800; color: #ffd34d; text-shadow: 0 2px 8px rgba(0,0,0,0.7); opacity: 0; transition: opacity 0.3s; text-align: center; }
+  #banner.show { opacity: 1; }
+  #flash { position: absolute; left: 50%; top: 130px; transform: translateX(-50%); font-size: 15px; color: #ff8a70; text-shadow: 0 2px 6px rgba(0,0,0,0.7); opacity: 0; transition: opacity 0.3s; }
+  #flash.show { opacity: 1; }
+  #busted { position: absolute; left: 50%; top: 170px; transform: translateX(-50%); width: 280px; height: 10px; background: rgba(255,255,255,0.16); border-radius: 5px; overflow: hidden; display: none; }
+  #busted-fill { height: 100%; background: #ff5a3c; width: 0%; }
+  #hint { position: absolute; right: 12px; bottom: 12px; font-size: 12px; color: rgba(238,241,245,0.75); text-align: right; line-height: 1.6; }
+  #mission-card { position: absolute; left: 12px; top: 12px; width: 300px; opacity: 0; transform: translateX(-12px); transition: opacity 0.4s, transform 0.4s; pointer-events: none; }
+  #mission-card.show { opacity: 1; transform: translateX(0); }
+  #mission-card-title { font-size: 18px; font-weight: 800; color: #ffd34d; margin-bottom: 4px; }
+  #mission-card-text { font-size: 14px; line-height: 1.5; color: #eef1f5; }
+  /* --- Screens --- */
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 10; color: #eef1f5; text-align: center; background: rgba(8, 12, 20, 0.55); }
+  .screen.show { display: flex; }
+  .screen h1 { font-size: 64px; margin: 0 0 6px; letter-spacing: 4px; color: #ffd34d; text-shadow: 0 4px 24px rgba(0,0,0,0.8); }
+  .screen h2 { font-size: 20px; font-weight: 400; margin: 0 0 24px; color: #cfd6e2; }
+  .screen p { max-width: 520px; line-height: 1.7; color: #dfe5ee; }
+  .screen .keys { font-size: 14px; line-height: 2; color: #aab4c4; margin-top: 8px; }
+  .screen button { pointer-events: auto; cursor: pointer; font-size: 20px; font-weight: 700; padding: 12px 34px; border: none; border-radius: 10px; background: #ffd34d; color: #1c1f26; margin-top: 18px; }
+  .screen button:hover { background: #ffe08a; }
+  #over-title { color: #ff5a3c; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game" aria-label="Costa Verde: an open-world crime game. Drive, steal cars, run missions and lose the police."></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud">
+  <div id="objective" class="panel">Welcome to Costa Verde — press M for your first job.</div>
+  <div id="mission-card" class="panel"><div id="mission-card-title"></div><div id="mission-card-text"></div></div>
+  <div id="banner"></div>
+  <div id="flash"></div>
+  <div id="busted"><div id="busted-fill"></div></div>
+  <div id="top-right">
+    <div id="stars">☆☆☆☆☆</div>
+    <div id="cash" class="panel">$0</div>
+    <div id="missions" class="panel">Jobs 0/5</div>
+    <div id="clock" class="panel">00:00</div>
+    <canvas id="minimap" width="190" height="190"></canvas>
+  </div>
+  <div id="bottom-left">
+    <div id="health-bar"><div id="health-fill"></div></div>
+    <div id="speed"></div>
+    <div id="ammo">Pistol 12 / 60</div>
+  </div>
+  <div id="hint">WASD move / drive · Shift run · E enter car · Click shoot · R reload<br>Drag mouse to look · Space handbrake · M next job · P pause</div>
+</div>
+
+<div id="screen-title" class="screen show">
+  <h1>COSTA VERDE</h1>
+  <h2>An open-world crime story in a sun-soaked coastal city</h2>
+  <p>Alex Vega is back in Costa Verde with empty pockets and one contact: Mara.
+  Steal cars, run her jobs, dodge the police — and pull off the big score.</p>
+  <button id="btn-start">Start the story</button>
+  <div class="keys">WASD move &amp; drive · Shift run · E enter / exit car · Click shoot · R reload<br>Drag mouse to look around · Space handbrake · M next job · P pause</div>
+</div>
+
+<div id="screen-pause" class="screen">
+  <h1>PAUSED</h1>
+  <p>Take a breath. Costa Verde will wait.</p>
+  <button id="btn-resume">Keep playing</button>
+</div>
+
+<div id="screen-over" class="screen">
+  <h1 id="over-title">WASTED!</h1>
+  <p id="over-text"></p>
+  <p id="over-stats"></p>
+  <button id="btn-restart">Start over</button>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
