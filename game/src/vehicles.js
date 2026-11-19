@@ -263,9 +263,13 @@ export function createVehicles(G) {
               G.audio.crash(Math.min(2, rel / 10));
               vehicles.damageCar(pc, rel * 0.4);
               if (other.kind === 'police') G.police.commitCrime(1, 'You hit a police car!');
-              else if (other.kind === 'traffic') G.police.commitCrime(0, '');
+              // Shove a same-direction car forward so it pulls away instead
+              // of being pinned in front of the player.
+              const align = Math.sin(pc.heading) * Math.sin(other.heading) + Math.cos(pc.heading) * Math.cos(other.heading);
+              if (align > 0.5 && other.kind === 'traffic') {
+                other.speed = Math.max(other.speed, Math.abs(pc.speed) * 0.8);
+              }
               pc.speed *= 0.6;
-              other.speed = 0;
             }
           }
         }

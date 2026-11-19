@@ -196,7 +196,9 @@ function stageShot(name) {
     const car = G.vehicles.parked[1];
     G.player.pos.set(car.pos.x, 0, car.pos.z);
     G.vehicles.steal(car);
-    car.pos.set(-210, 0, 70);
+    // Start far from the garage (the mission target), or the job would
+    // complete itself during staging.
+    car.pos.set(-70, 0, -210);
     car.heading = Math.PI / 2;
     car.speed = 18;
     G.missions.startNext();
@@ -227,15 +229,18 @@ function stageShot(name) {
   if (name === 'chase') {
     const car = G.player.car;
     const cops = G.police.list;
+    // A rear three-quarter camera: the player's car, the road ahead, and the
+    // tail car behind it all read in one frame.
+    G.player.cameraYaw = Math.PI / 2 + Math.PI + 0.55;
     if (car && cops[0]) {
-      // One police car head-on ahead, so the chase reads in the frame;
+      // One police car head-on far ahead, so the chase reads in the frame;
       // the rest stay on the player's tail and show on the minimap.
-      cops[0].pos.set(car.pos.x + 46, 0, car.pos.z + 3);
+      cops[0].pos.set(car.pos.x + 62, 0, car.pos.z + 3);
       cops[0].heading = -Math.PI / 2;
       cops[0].speed = 20;
     }
     if (car && cops[1]) {
-      cops[1].pos.set(car.pos.x - 22, 0, car.pos.z - 3);
+      cops[1].pos.set(car.pos.x - 30, 0, car.pos.z - 3);
       cops[1].heading = Math.PI / 2;
       cops[1].speed = 22;
     }
