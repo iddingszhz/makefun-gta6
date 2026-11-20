@@ -1,94 +1,96 @@
-// Costa Verde — shared tuning numbers, city layout and story data.
-// Every module reads its numbers from here so the whole game stays in tune.
+// Costa Verde v3 — one place for every number the game tunes by.
+// The city grid, the cars, the wanted level, the missions and the guns all
+// read from here, so a balance change is a single edit, not a hunt.
 
-// --- City grid -------------------------------------------------------------
-export const PITCH = 70; // distance between neighbouring street centrelines
-export const STREET_COUNT = 9; // streets per direction, centred on 0
-export const ROAD_HALF = 7; // half the width of a road
-export const BLOCK = PITCH - ROAD_HALF * 2; // buildable square between roads
-export const CITY_HALF = ((STREET_COUNT - 1) / 2) * PITCH + ROAD_HALF; // ~287
+// --- The street grid -------------------------------------------------------
+// Streets run both ways on a square lattice. The avenues are 70 m apart and
+// the drivable ribbon of each is 14 m wide, which leaves 56 m blocks.
+export const GRID_STEP = 70;
+export const GRID_N = 9;
+export const ROAD_HALF = 7;
+export const BLOCK_SPAN = GRID_STEP - ROAD_HALF * 2;
+export const CITY_EDGE = ((GRID_N - 1) / 2) * GRID_STEP + ROAD_HALF;
 
-// Street centrelines: -280, -210, -140, -70, 0, 70, 140, 210, 280
-export const STREETS = [];
-for (let i = 0; i < STREET_COUNT; i += 1) {
-  STREETS.push((i - (STREET_COUNT - 1) / 2) * PITCH);
+export const AVENUES = [];
+for (let i = 0; i < GRID_N; i += 1) {
+  AVENUES.push((i - (GRID_N - 1) / 2) * GRID_STEP);
 }
-// Block centres sit between the streets: -245, -175, ..., 245
-export const BLOCKS = [];
-for (let i = 0; i < STREET_COUNT - 1; i += 1) {
-  BLOCKS.push((i - (STREET_COUNT - 2) / 2) * PITCH);
+// Block centres fall halfway between avenues.
+export const BLOCK_CENTRES = [];
+for (let i = 0; i < GRID_N - 1; i += 1) {
+  BLOCK_CENTRES.push((i - (GRID_N - 2) / 2) * GRID_STEP);
 }
 
-export const WORLD = {
-  groundColor: 0x8a7f63,
-  skyColor: 0x9fc8e8,
-  fogColor: 0xa8c6de,
+export const SKY = {
+  ground: 0x8a7f63,
+  sky: 0x9fc8e8,
+  fog: 0xa8c6de,
   fogNear: 220,
   fogFar: 620,
-  sunColor: 0xfff1cf,
-  sunIntensity: 2.6,
-  hemiSky: 0xbdd8f0,
-  hemiGround: 0x9c8a6a,
-  hemiIntensity: 0.9,
+  sun: 0xfff1cf,
+  sunPower: 2.6,
+  hemiTop: 0xbdd8f0,
+  hemiBottom: 0x9c8a6a,
+  hemiPower: 0.9,
 };
 
-// --- Player on foot --------------------------------------------------------
-export const PLAYER = {
-  walkSpeed: 6,
-  runSpeed: 10.5,
-  turnSpeed: 9,
+// --- Alex on foot ----------------------------------------------------------
+export const ON_FOOT = {
+  walk: 6,
+  run: 10.5,
+  turn: 9,
   radius: 0.55,
   height: 1.8,
-  maxHealth: 100,
-  cameraDistance: 9,
-  cameraHeight: 4.2,
-  cameraDistanceCar: 14,
-  cameraHeightCar: 6.5,
+  hp: 100,
+  camDist: 9,
+  camHigh: 4.2,
+  camDistCar: 14,
+  camHighCar: 6.5,
 };
 
 // --- Cars ------------------------------------------------------------------
-export const CAR = {
+export const DRIVE = {
   accel: 20,
   brake: 34,
-  reverseAccel: 12,
-  maxSpeed: 38,
-  maxReverse: 12,
+  reverse: 12,
+  top: 38,
+  topReverse: 12,
   steerMax: 0.55,
-  steerSpeed: 2.2,
+  steerRate: 2.2,
   grip: 6.5,
   radius: 1.5,
-  halfLength: 2.3,
-  halfWidth: 1.05,
-  maxHealth: 100,
-  trafficCount: 14,
-  parkedCount: 16,
-  policeMax: 4,
+  halfLen: 2.3,
+  halfWid: 1.05,
+  hp: 100,
+  traffic: 14,
+  parked: 16,
+  copMax: 4,
 };
 
-// --- Wanted level ----------------------------------------------------------
-export const WANTED = {
+// --- The wanted level ------------------------------------------------------
+export const HEAT = {
   max: 5,
-  decayDelay: 18, // seconds with no crime and no police nearby before it drops
-  decayStep: 9, // seconds per star lost while hidden
-  policePerStar: [0, 1, 2, 2, 3, 4],
-  policeTopSpeedMax: 36, // a good driver can always pull away; 5 stars must not outrun the player
-  bustStopRange: 8, // a police car this close to a player on foot slows to a stop, so the bust can land
-  bustedRange: 7, // a police car this close to the player on foot starts a bust
-  bustedTime: 3, // seconds inside bustedRange to get busted
-  reinforceDelay: 8, // seconds before a destroyed police car is replaced
+  quiet: 18, // seconds unnoticed before the first star starts to fall
+  step: 9, // seconds per star lost while hidden
+  copsPerStar: [0, 1, 2, 2, 3, 4],
+  copTop: 36, // a good driver can always pull away; 5 stars must not outrun them
+  parkClose: 8, // a cop this close to a player on foot slows to a stop, so the bust can land
+  bustRange: 7,
+  bustTime: 3, // seconds inside bustRange to get busted
+  replaceDelay: 8, // seconds before a destroyed police car is replaced
 };
 
-// --- Combat ----------------------------------------------------------------
-export const COMBAT = {
-  pistolDamage: 34,
-  pistolRange: 60,
-  magSize: 12,
-  reloadSeconds: 1.4,
-  pedHealth: 30,
+// --- The pistol ------------------------------------------------------------
+export const GUN = {
+  damage: 34,
+  range: 60,
+  mag: 12,
+  reload: 1.4,
+  pedHp: 30,
 };
 
-// --- Missions --------------------------------------------------------------
-export const MISSION_DEFS = [
+// --- The story -------------------------------------------------------------
+export const JOBS = [
   {
     id: 'hot-wheels',
     title: 'Hot Wheels',
@@ -102,7 +104,7 @@ export const MISSION_DEFS = [
     giver: 'Mara',
     text: 'Three drop-offs, ninety seconds. Hit every checkpoint before the clock runs out.',
     reward: 400,
-    timeLimit: 90,
+    limit: 90,
   },
   {
     id: 'heat-check',
@@ -127,25 +129,26 @@ export const MISSION_DEFS = [
   },
 ];
 
-export const SIDE_JOB_REWARD = 150;
+export const SIDE_PAY = 150;
 
-// --- Seeded random ---------------------------------------------------------
-// Small deterministic generator so a screenshot seed always builds the same city.
-export function createRng(seed) {
-  let a = seed >>> 0;
+// --- Deterministic random --------------------------------------------------
+// xorshift32: a tiny generator with a full 32-bit period, so a screenshot
+// seed always rebuilds the same city and the same traffic.
+export function makeRng(seed) {
+  let s = (seed >>> 0) || 0x9e3779b9;
   return function rng() {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    s >>>= 0;
+    return s / 4294967296;
   };
 }
 
-export function pick(rng, list) {
+export function pickOne(rng, list) {
   return list[Math.floor(rng() * list.length)];
 }
 
-export function range(rng, min, max) {
-  return min + rng() * (max - min);
+export function between(rng, lo, hi) {
+  return lo + rng() * (hi - lo);
 }

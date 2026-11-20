@@ -1,76 +1,94 @@
-# Costa Verde
+# Costa Verde — a make.fun gta6-01 entry
 
 [![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/c/gta6-01)
 [![rank](https://make.fun/badge/gta6-01/iddingszhz/makefun-gta6/rank.svg)](https://make.fun/c/gta6-01)
 [![reward](https://make.fun/badge/gta6-01/iddingszhz/makefun-gta6/reward.svg)](https://make.fun/c/gta6-01)
 
-An original open-world crime game that runs entirely offline in a desktop
-browser. No Rockstar names, characters, maps or assets — this is a city of
-its own: **Costa Verde**, a sun-soaked fictional coastal city.
+A complete open-world crime game that runs fully offline in a desktop
+browser. It borrows nothing from any commercial game — no names, no
+characters, no maps, no assets. The city is its own: **Costa Verde**, a
+fictional coastal town in the sun.
 
-## The story
+## Premise
 
-Alex Vega is back in Costa Verde with empty pockets and one contact: Mara.
-Steal cars, run her jobs, dodge the police — and pull off the big score.
+Alex Vega returns to Costa Verde broke, with a single contact left: Mara.
+To get back on his feet he steals cars, runs her jobs, stays ahead of the
+police, and works toward one big score.
 
-## How to play
+## Running it
 
-Serve `game/` with any static server (`node serve.ts`, then open
-http://localhost:8080) and play with keyboard and mouse:
+Any static server will do. The one in the repo is the quickest way:
 
-- **WASD** — move on foot / drive
-- **Shift** — run
-- **E** — enter / exit a car (stealing one raises your wanted level)
-- **Click** — shoot the pistol, **R** — reload
-- **Drag mouse** — orbit the camera, **wheel** — zoom
-- **Space** — handbrake
-- **M** — next story job (or a courier side job when the story is done)
-- **P / Esc** — pause
+```sh
+node serve.ts
+# then open http://localhost:8080
+```
 
-## What's in the game
+No build step, no packages to install for the game itself, no network
+requests once the page loads. Three.js is vendored at
+`game/vendor/three.module.min.js`.
 
-- **A 3D city**: 9×9 street grid, procedural buildings with lit windows,
-  palms, streetlights, a beach and a marina — all generated from a seed.
-- **On foot and by car**: third-person character, arcade driving, traffic
-  that drives the streets, parked cars to steal.
-- **Wanted 0–5 stars**: stealing, hitting pedestrians and ramming police
-  raise the heat; police cars chase and ram; stay out of sight and it cools.
-  Get wasted or busted and the run ends.
-- **Five story missions**: steal and deliver a car, a timed courier rush,
-  reach 3 stars then lose the heat, a pickup under pursuit, and the big
-  score — rob the Sunrise Mart and escape a 4-star chase. Plus repeatable
-  courier side jobs for cash in free roam.
-- **Combat**: hitscan pistol with muzzle flash, ammo and reload;
-  pedestrians flee, police notice.
-- **HUD**: minimap with player arrow, police dots and mission beacon,
-  wanted stars, cash, health, speed, objective line, clock.
-- **Sound**: fully synthesized WebAudio — engine hum, police siren,
-  gunshots, crashes, pickup blips. No audio files.
-- **Save**: cash and jobs completed persist in localStorage.
+## Controls
 
-## Tech
-
-Three.js (vendored as `game/vendor/three.module.min.js`), plain ES modules,
-no build step, zero network requests. Screenshots are staged with
-`?shot=chase|drive|mission|foot&seed=N`, which plays the real game forward
-into the frame.
-
-## Files
-
-| File | Job |
+| Keys | What they do |
 | --- | --- |
-| `game/src/main.js` | Boot, loop, screens, save, screenshot scenes |
-| `game/src/config.js` | Tuning numbers, city layout, mission data |
-| `game/src/city.js` | The city: streets, buildings, palms, places |
-| `game/src/player.js` | Alex on foot, camera, pedestrians |
-| `game/src/vehicles.js` | Cars, traffic AI, stealing, driving |
-| `game/src/police.js` | Wanted level, pursuit, busted / wasted |
-| `game/src/missions.js` | Five story jobs + courier side jobs |
-| `game/src/combat.js` | Pistol, hitscan, ammo |
-| `game/src/hud.js` | HUD, minimap, banners, screens |
-| `game/src/audio.js` | Synthesized WebAudio sounds |
-| `game/src/input.js` | Keyboard and mouse |
-| `game/src/textures.js` | Canvas-generated textures |
+| WASD / arrows | Move on foot, or drive when in a car |
+| Shift | Run |
+| E | Get in / out of a car (taking one raises the wanted level) |
+| Mouse click | Fire the pistol |
+| R | Reload |
+| Mouse drag / wheel | Orbit the camera / zoom |
+| Space | Handbrake |
+| M | Start the next story job (or a courier side job once the story is done) |
+| N | Start a courier side job |
+| P / Esc | Pause |
+
+## What the game has
+
+- **A living 3D city.** A 9×9 street grid with procedural buildings (lit
+  windows, shop awnings), palm trees, streetlights, a beach and a marina.
+  Everything is generated from a seed, so `?seed=N` rebuilds the same city.
+- **On foot and behind the wheel.** A third-person character with arcade
+  driving, traffic that follows the street grid, and parked cars waiting to
+  be stolen.
+- **A wanted level, 0–5 stars.** Stealing, hitting pedestrians and ramming
+  police cars raise the heat. Police cars chase and ram; stay out of sight
+  and the heat cools off. Get wasted or busted and the run ends.
+- **Five story jobs from Mara.** Steal and deliver a car; a timed courier
+  rush; reach 3 stars and then lose the heat; a pickup under pursuit; and
+  the big score — rob the Sunrise Mart and escape a 4-star chase. Courier
+  side jobs keep paying in free roam.
+- **Combat.** A hitscan pistol with a muzzle flash, a magazine and a reload;
+  pedestrians flee from gunfire and the police notice.
+- **A full HUD.** Minimap with the player arrow, police dots and the mission
+  beacon; wanted stars; cash; health; speed; an objective line; a clock.
+- **Synthesized sound.** Engine hum, a police siren, gunshots, crashes and
+  pickup blips, all made with WebAudio. No audio files.
+- **A save.** Cash and completed jobs persist in localStorage.
+
+## Screenshots
+
+The four staged frames in `screenshots/` are real renders of the game,
+staged with `?shot=chase|drive|mission|foot&seed=N`, which plays the game
+forward into the frame instead of posing a diorama.
+
+## Layout
+
+- `game/index.html` — page, HUD markup, screens, import map
+- `game/src/main.js` — boot, the loop, screens, save, screenshot staging
+- `game/src/config.js` — tuning numbers, city layout, job data, the RNG
+- `game/src/city.js` — streets, buildings, palms, lamps, named places
+- `game/src/player.js` — Alex on foot, the camera, pedestrians
+- `game/src/vehicles.js` — the car factory, traffic, stealing, driving
+- `game/src/police.js` — the wanted level, pursuit, busted / wasted
+- `game/src/missions.js` — the five story jobs and courier side jobs
+- `game/src/combat.js` — the pistol, hitscan, ammo
+- `game/src/hud.js` — HUD, minimap, banners, screens
+- `game/src/audio.js` — synthesized WebAudio sounds
+- `game/src/input.js` — keyboard and mouse
+- `game/src/textures.js` — canvas-painted textures
+- `main.ts` — the entry program: copies the game and screenshots, writes the dossier
+- `serve.ts` — a tiny static server for local play
 
 ## License
 

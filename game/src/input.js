@@ -1,6 +1,7 @@
-// Costa Verde — keyboard and mouse input.
-// Held keys are read every frame; one-shot presses (interact, shoot, pause, reload)
-// are queued as flags and taken once by the loop, so a press is never lost or double-counted.
+// Costa Verde v3 — keyboard and mouse input.
+// Held keys are read every frame; one-shot presses (interact, shoot, pause,
+// reload) are queued as flags and taken once by the loop, so a press is never
+// lost or double-counted.
 
 export const ACT_INTERACT = 1;
 export const ACT_SHOOT = 2;
@@ -8,105 +9,97 @@ export const ACT_PAUSE = 4;
 export const ACT_RELOAD = 8;
 export const ACT_CONFIRM = 16;
 
-const FORWARD = new Set(['KeyW', 'ArrowUp']);
+const FWD = new Set(['KeyW', 'ArrowUp']);
 const BACK = new Set(['KeyS', 'ArrowDown']);
 const LEFT = new Set(['KeyA', 'ArrowLeft']);
 const RIGHT = new Set(['KeyD', 'ArrowRight']);
-const RUN = new Set(['ShiftLeft', 'ShiftRight']);
-const BRAKE = new Set(['Space']);
+const SPRINT = new Set(['ShiftLeft', 'ShiftRight']);
+const HANDBRAKE = new Set(['Space']);
+
+function inSet(set, keys) {
+  for (const k of keys) if (set.has(k)) return true;
+  return false;
+}
 
 export function createInput(canvas) {
-  const keys = new Set();
-  let actions = 0;
-  let dragX = 0;
-  let dragY = 0;
+  const held = new Set();
+  let queued = 0;
+  let orbitX = 0;
+  let orbitY = 0;
   let dragging = false;
-  let wheel = 0;
+  let lastX = 0;
+  let lastY = 0;
+  let wheelDelta = 0;
 
-  window.addEventListener('keydown', (event) => {
-    if (event.code === 'KeyE' && !event.repeat) actions |= ACT_INTERACT;
-    else if (event.code === 'KeyR' && !event.repeat) actions |= ACT_RELOAD;
-    else if ((event.code === 'KeyP' || event.code === 'Escape') && !event.repeat) actions |= ACT_PAUSE;
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyE' && !e.repeat) queued |= ACT_INTERACT;
+    else if (e.code === 'KeyR' && !e.repeat) queued |= ACT_RELOAD;
+    else if ((e.code === 'KeyP' || e.code === 'Escape') && !e.repeat) queued |= ACT_PAUSE;
     // Enter only: Space is the handbrake, and a held brake must not confirm
     // a restart the instant the game-over screen appears.
-    else if (event.code === 'Enter' && !event.repeat) actions |= ACT_CONFIRM;
-    keys.add(event.code);
-    if (FORWARD.has(event.code) || BACK.has(event.code) || LEFT.has(event.code) || RIGHT.has(event.code) || BRAKE.has(event.code)) {
-      event.preventDefault();
+    else if (e.code === 'Enter' && !e.repeat) queued |= ACT_CONFIRM;
+    held.add(e.code);
+    if (inSet(FWD, [e.code]) || inSet(BACK, [e.code]) || inSet(LEFT, [e.code]) || inSet(RIGHT, [e.code]) || inSet(HANDBRAKE, [e.code])) {
+      e.preventDefault();
     }
   });
-  window.addEventListener('keyup', (event) => {
-    keys.delete(event.code);
+  window.addEventListener('keyup', (e) => {
+    held.delete(e.code);
   });
-  window.addEventListener('blur', () => keys.clear());
+  window.addEventListener('blur', () => held.clear());
 
-  canvas.addEventListener('pointerdown', (event) => {
+  canvas.addEventListener('pointerdown', (e) => {
     dragging = true;
-    dragX = event.clientX;
-    dragY = event.clientY;
-    canvas.setPointerCapture(event.pointerId);
+    lastX = e.clientX;
+    lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
   });
-  canvas.addEventListener('pointermove', (event) => {
+  canvas.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    input.orbitDX += event.clientX - dragX;
-    input.orbitDY += event.clientY - dragY;
-    dragX = event.clientX;
-    dragY = event.clientY;
+    orbitX += e.clientX - lastX;
+    orbitY += e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
   });
-  const endDrag = () => {
+  const stopDrag = () => {
     dragging = false;
   };
-  canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('pointerup', stopDrag);
+  canvas.addEventListener('pointercancel', stopDrag);
   // A click (press without much drag) is a shot; a drag orbits the camera.
-  canvas.addEventListener('click', (event) => {
-    if (Math.abs(event.clientX - dragX) < 6 && Math.abs(event.clientY - dragY) < 6) {
-      actions |= ACT_SHOOT;
+  canvas.addEventListener('click', (e) => {
+    if (Math.abs(e.clientX - lastX) < 6 && Math.abs(e.clientY - lastY) < 6) {
+      queued |= ACT_SHOOT;
     }
   });
-  canvas.addEventListener('wheel', (event) => {
-    wheel += event.deltaY;
-    event.preventDefault();
+  canvas.addEventListener('wheel', (e) => {
+    wheelDelta += e.deltaY;
+    e.preventDefault();
   }, { passive: false });
 
-  const input = {
-    orbitDX: 0,
-    orbitDY: 0,
-    forward() {
-      return [...keys].some((k) => FORWARD.has(k));
-    },
-    back() {
-      return [...keys].some((k) => BACK.has(k));
-    },
-    left() {
-      return [...keys].some((k) => LEFT.has(k));
-    },
-    right() {
-      return [...keys].some((k) => RIGHT.has(k));
-    },
-    run() {
-      return [...keys].some((k) => RUN.has(k));
-    },
-    brake() {
-      return [...keys].some((k) => BRAKE.has(k));
-    },
+  return {
+    forward() { return inSet(FWD, held); },
+    back() { return inSet(BACK, held); },
+    left() { return inSet(LEFT, held); },
+    right() { return inSet(RIGHT, held); },
+    run() { return inSet(SPRINT, held); },
+    brake() { return inSet(HANDBRAKE, held); },
     takeOrbit() {
-      const dx = input.orbitDX;
-      const dy = input.orbitDY;
-      input.orbitDX = 0;
-      input.orbitDY = 0;
+      const dx = orbitX;
+      const dy = orbitY;
+      orbitX = 0;
+      orbitY = 0;
       return { dx, dy };
     },
     takeWheel() {
-      const w = wheel;
-      wheel = 0;
+      const w = wheelDelta;
+      wheelDelta = 0;
       return w;
     },
     takeActions() {
-      const taken = actions;
-      actions = 0;
+      const taken = queued;
+      queued = 0;
       return taken;
     },
   };
-  return input;
 }

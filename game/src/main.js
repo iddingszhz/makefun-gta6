@@ -1,13 +1,14 @@
-// Costa Verde — boot and the one loop: read input, step the world, paint it.
+// Costa Verde v3 — boot and the one loop: read input, step the world, paint it.
 // Screens: title -> play -> paused / game over. Missions start with M.
 // ?seed=N fixes the city; ?shot=chase|drive|foot|mission stages a screenshot
 // scene instead of the title screen and sets window.__shotReady when painted.
+
 import * as THREE from 'three';
-import { CAR, MISSION_DEFS, PLAYER, createRng } from './config.js';
-import { createInput, ACT_CONFIRM, ACT_INTERACT, ACT_PAUSE, ACT_RELOAD, ACT_SHOOT } from './input.js';
+import { JOBS, ON_FOOT, makeRng } from './config.js';
+import { ACT_CONFIRM, ACT_INTERACT, ACT_PAUSE, ACT_RELOAD, ACT_SHOOT, createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { createCity } from './city.js';
-import { createPlayer, createPedestrians } from './player.js';
+import { createPedestrians, createPlayer } from './player.js';
 import { createVehicles } from './vehicles.js';
 import { createPolice } from './police.js';
 import { createCombat } from './combat.js';
@@ -15,10 +16,10 @@ import { createMissions } from './missions.js';
 import { createHud } from './hud.js';
 
 const SAVE_KEY = 'costa-verde.save';
-const params = new URLSearchParams(window.location.search);
-const shot = params.get('shot');
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : 1;
+const query = new URLSearchParams(window.location.search);
+const shotName = query.get('shot');
+const seedRaw = Number.parseInt(query.get('seed') ?? '', 10);
+const seed = Number.isInteger(seedRaw) ? seedRaw : 1;
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -42,7 +43,7 @@ const G = {
   scene,
   camera,
   renderer,
-  rng: createRng(seed),
+  rng: makeRng(seed),
   state: 'title',
   time: 0,
   playTime: 0,
@@ -104,11 +105,11 @@ if (saved) {
 }
 G.hud.setCash(G.player.cash);
 G.hud.setWanted(0);
-G.hud.setHealth(PLAYER.maxHealth);
+G.hud.setHealth(ON_FOOT.hp);
 G.hud.setAmmo(12, 60);
 
 // --- Interactions ----------------------------------------------------------
-function tryInteract() {
+function doInteract() {
   if (G.state !== 'play' || G.player.dead) return;
   if (G.player.inCar) {
     G.vehicles.exitCar();
@@ -116,20 +117,20 @@ function tryInteract() {
   }
   const car = G.vehicles.nearestStealable(G.player.pos.x, G.player.pos.z);
   if (car) {
-    const firstTheft = !car.stolenByPlayer;
+    const fresh = !car.stolenByPlayer;
     G.vehicles.steal(car);
-    if (firstTheft) G.police.commitCrime(1, 'You stole a car!');
+    if (fresh) G.police.commitCrime(1, 'You stole a car!');
   }
 }
 
-function startGame() {
+function beginPlay() {
   G.audio.unlock();
   G.state = 'play';
   G.hud.showScreen(null);
   G.hud.setObjective('Welcome to Costa Verde — press M for your first job.');
 }
 
-function restartGame() {
+function restartRun() {
   G.player.reset();
   G.vehicles.reset();
   G.peds.reset();
@@ -139,23 +140,23 @@ function restartGame() {
   G.player.cash = 0;
   G.playTime = 0;
   G.hud.setCash(0);
-  G.hud.setHealth(PLAYER.maxHealth);
+  G.hud.setHealth(ON_FOOT.hp);
   G.hud.setObjective('Welcome to Costa Verde — press M for your first job.');
   G.state = 'play';
   G.hud.showScreen(null);
 }
 
-document.getElementById('btn-start').addEventListener('click', startGame);
+document.getElementById('btn-start').addEventListener('click', beginPlay);
 document.getElementById('btn-resume').addEventListener('click', () => {
   G.state = 'play';
   G.hud.showScreen(null);
 });
-document.getElementById('btn-restart').addEventListener('click', restartGame);
+document.getElementById('btn-restart').addEventListener('click', restartRun);
 window.addEventListener('keydown', (event) => {
   if (event.code === 'KeyM' && G.state === 'play') {
     if (G.missions.active) {
       G.hud.flash('Finish the current job first — or lose it by getting busted.');
-    } else if (G.missions.nextIndex < MISSION_DEFS.length) {
+    } else if (G.missions.nextIndex < JOBS.length) {
       G.missions.startNext();
     } else {
       G.missions.startSideJob();
@@ -191,7 +192,7 @@ function stageShot(name) {
     car.speed = 24;
     G.police.setStars(3);
     G.missions.startNext(); // Hot Wheels: steal done, deliver to the garage
-    G.hud.setObjective('Hot Wheels: Deliver the car to Mara\'s Garage');
+    G.hud.setObjective("Hot Wheels: Deliver the car to Mara's Garage");
     G.player.cameraYaw = Math.PI / 2 + Math.PI;
   } else if (name === 'drive') {
     const car = G.vehicles.parked[1];
@@ -250,7 +251,7 @@ function stageShot(name) {
 
 // --- The loop --------------------------------------------------------------
 let last = performance.now();
-let shotReadyTimer = 0;
+let shotTimer = 0;
 
 function stepWorld(dt) {
   G.time += dt;
@@ -281,14 +282,14 @@ function frame(now) {
   last = now;
   if (G.state === 'play') {
     const actions = G.input.takeActions();
-    if (actions & ACT_INTERACT) tryInteract();
+    if (actions & ACT_INTERACT) doInteract();
     if (actions & ACT_SHOOT) G.combat.shoot();
     if (actions & ACT_RELOAD) G.combat.reload();
     if (actions & ACT_PAUSE) {
       G.state = 'pause';
       G.hud.showScreen('pause');
     }
-    if (actions & ACT_CONFIRM && G.player.dead) restartGame();
+    if (actions & ACT_CONFIRM && G.player.dead) restartRun();
     stepWorld(dt);
   } else if (G.state === 'title') {
     // Slow orbit around the city centre behind the title screen.
@@ -299,19 +300,19 @@ function frame(now) {
     G.city.beacon.rotation.y += dt;
   } else if (G.state === 'over') {
     const actions = G.input.takeActions();
-    if (actions & ACT_CONFIRM) restartGame();
+    if (actions & ACT_CONFIRM) restartRun();
   }
   // The beacon ring pulses even when paused.
   G.city.beacon.children[1].scale.setScalar(1 + Math.sin(G.time * 4) * 0.12);
   renderer.render(scene, camera);
-  if (shot) {
-    shotReadyTimer += dt;
-    if (shotReadyTimer > 0.5) window.__shotReady = true;
+  if (shotName) {
+    shotTimer += dt;
+    if (shotTimer > 0.5) window.__shotReady = true;
   }
 }
 
-if (shot) {
-  stageShot(shot);
+if (shotName) {
+  stageShot(shotName);
 } else {
   G.hud.showScreen('title');
 }

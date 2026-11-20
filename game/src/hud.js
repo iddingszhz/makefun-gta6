@@ -1,122 +1,121 @@
-// Costa Verde — the 2D HUD: wanted stars, cash, health, speed, ammo, objective
-// line, a top-down minimap, banners and the title / pause / game-over screens.
-// All DOM; the 3D world never draws a pixel of UI.
-import { CITY_HALF, MISSION_DEFS, STREETS, WANTED } from './config.js';
+// Costa Verde v3 — the 2D HUD: wanted stars, cash, health, speed, ammo,
+// objective line, a top-down minimap, banners and the title / pause /
+// game-over screens. All DOM; the 3D world never draws a pixel of UI.
 
-function el(id) {
+import { AVENUES, CITY_EDGE, HEAT, JOBS } from './config.js';
+
+function grab(id) {
   return document.getElementById(id);
 }
 
 export function createHud(G) {
-  const minimap = el('minimap');
-  const mctx = minimap.getContext('2d');
-  let bannerTimer = 0;
-  let flashTimer = 0;
-  let kick = 0;
-  let missionCardTimer = 0; // one timer per card: a new card must not be hidden by the old one's
+  const map = grab('minimap');
+  const mctx = map.getContext('2d');
+  const $ = {};
+  for (const id of ['stars', 'cash', 'missions', 'clock', 'health-fill', 'speed', 'ammo', 'objective', 'banner', 'flash', 'busted', 'busted-fill', 'mission-card', 'mission-card-title', 'mission-card-text', 'over-title', 'over-text', 'over-stats', 'hud']) {
+    $[id] = grab(id);
+  }
+  let bannerLeft = 0;
+  let flashLeft = 0;
+  let shake = 0;
+  let cardTimer = 0; // one timer per card: a new card must not be hidden by the old one's
 
   const hud = {
     setWanted(stars) {
-      const starsEl = el('stars');
-      starsEl.textContent = '★'.repeat(stars) + '☆'.repeat(WANTED.max - stars);
-      starsEl.classList.toggle('hot', stars >= 3);
+      $.stars.textContent = '★'.repeat(stars) + '☆'.repeat(HEAT.max - stars);
+      $.stars.classList.toggle('hot', stars >= 3);
     },
     setCash(cash) {
-      el('cash').textContent = `$${cash}`;
+      $.cash.textContent = `$${cash}`;
     },
     setHealth(health) {
-      const bar = el('health-fill');
-      bar.style.width = `${Math.max(0, health)}%`;
-      bar.classList.toggle('low', health < 30);
+      $['health-fill'].style.width = `${Math.max(0, health)}%`;
+      $['health-fill'].classList.toggle('low', health < 30);
     },
-    setSpeed(speedKmh, inCar) {
-      el('speed').textContent = inCar ? `${Math.round(speedKmh)} km/h` : '';
+    setSpeed(kmh, inCar) {
+      $.speed.textContent = inCar ? `${Math.round(kmh)} km/h` : '';
     },
-    setAmmo(ammo, reserve, reloading = false) {
-      el('ammo').textContent = reloading ? 'RELOADING…' : `Pistol ${ammo} / ${reserve}`;
+    setAmmo(ammo, spare, reloading = false) {
+      $.ammo.textContent = reloading ? 'RELOADING…' : `Pistol ${ammo} / ${spare}`;
     },
     setObjective(text) {
-      el('objective').textContent = text;
+      $.objective.textContent = text;
     },
     setMissions(done, total) {
-      el('missions').textContent = `Jobs ${done}/${total}`;
+      $.missions.textContent = `Jobs ${done}/${total}`;
     },
     setClock(seconds) {
       const m = Math.floor(seconds / 60);
       const s = Math.floor(seconds % 60);
-      el('clock').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      $.clock.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     },
     setBustedProgress(frac) {
-      const bar = el('busted');
-      bar.style.display = frac > 0 ? 'block' : 'none';
-      el('busted-fill').style.width = `${Math.min(100, frac * 100)}%`;
+      $.busted.style.display = frac > 0 ? 'block' : 'none';
+      $['busted-fill'].style.width = `${Math.min(100, frac * 100)}%`;
     },
     banner(text) {
-      const b = el('banner');
-      b.textContent = text;
-      b.classList.add('show');
-      bannerTimer = 3.2;
+      $.banner.textContent = text;
+      $.banner.classList.add('show');
+      bannerLeft = 3.2;
     },
     flash(text) {
-      const f = el('flash');
-      f.textContent = text;
-      f.classList.add('show');
-      flashTimer = 2.2;
+      $.flash.textContent = text;
+      $.flash.classList.add('show');
+      flashLeft = 2.2;
     },
     showMissionCard(title, text) {
-      const card = el('mission-card');
-      el('mission-card-title').textContent = title;
-      el('mission-card-text').textContent = text;
-      card.classList.add('show');
-      clearTimeout(missionCardTimer);
-      missionCardTimer = setTimeout(() => card.classList.remove('show'), 6000);
+      $['mission-card-title'].textContent = title;
+      $['mission-card-text'].textContent = text;
+      $['mission-card'].classList.add('show');
+      clearTimeout(cardTimer);
+      cardTimer = setTimeout(() => $['mission-card'].classList.remove('show'), 6000);
     },
     kickCamera() {
-      kick = 0.02;
+      shake = 0.02;
     },
     takeKick() {
-      const k = kick;
-      kick = 0;
+      const k = shake;
+      shake = 0;
       return k;
     },
     update(dt) {
-      if (bannerTimer > 0) {
-        bannerTimer -= dt;
-        if (bannerTimer <= 0) el('banner').classList.remove('show');
+      if (bannerLeft > 0) {
+        bannerLeft -= dt;
+        if (bannerLeft <= 0) $.banner.classList.remove('show');
       }
-      if (flashTimer > 0) {
-        flashTimer -= dt;
-        if (flashTimer <= 0) el('flash').classList.remove('show');
+      if (flashLeft > 0) {
+        flashLeft -= dt;
+        if (flashLeft <= 0) $.flash.classList.remove('show');
       }
     },
     // Top-down map: roads, player arrow, police dots, mission beacon.
     drawMinimap() {
-      const size = minimap.width;
-      const scale = size / (CITY_HALF * 2 + 40);
-      const toMap = (x, z) => [(x + CITY_HALF + 20) * scale, (z + CITY_HALF + 20) * scale];
+      const size = map.width;
+      const scale = size / (CITY_EDGE * 2 + 40);
+      const toMap = (x, z) => [(x + CITY_EDGE + 20) * scale, (z + CITY_EDGE + 20) * scale];
       mctx.clearRect(0, 0, size, size);
       mctx.fillStyle = 'rgba(20,24,32,0.85)';
       mctx.fillRect(0, 0, size, size);
       // Blocks
       mctx.fillStyle = '#3a3f46';
-      for (let i = 0; i < STREETS.length - 1; i += 1) {
-        for (let j = 0; j < STREETS.length - 1; j += 1) {
-          const [x, z] = toMap(STREETS[i] + 35, STREETS[j] + 35);
+      for (let i = 0; i < AVENUES.length - 1; i += 1) {
+        for (let j = 0; j < AVENUES.length - 1; j += 1) {
+          const [x, z] = toMap(AVENUES[i] + 35, AVENUES[j] + 35);
           mctx.fillRect(x - 17 * scale, z - 17 * scale, 34 * scale, 34 * scale);
         }
       }
       // Roads
       mctx.strokeStyle = '#8b93a3';
       mctx.lineWidth = 2;
-      for (const s of STREETS) {
-        const [x1, z1] = toMap(s, -CITY_HALF);
-        const [x2, z2] = toMap(s, CITY_HALF);
+      for (const s of AVENUES) {
+        const [x1, z1] = toMap(s, -CITY_EDGE);
+        const [x2, z2] = toMap(s, CITY_EDGE);
         mctx.beginPath();
         mctx.moveTo(x1, z1);
         mctx.lineTo(x2, z2);
         mctx.stroke();
-        const [x3, z3] = toMap(-CITY_HALF, s);
-        const [x4, z4] = toMap(CITY_HALF, s);
+        const [x3, z3] = toMap(-CITY_EDGE, s);
+        const [x4, z4] = toMap(CITY_EDGE, s);
         mctx.beginPath();
         mctx.moveTo(x3, z3);
         mctx.lineTo(x4, z4);
@@ -166,16 +165,16 @@ export function createHud(G) {
     },
     showScreen(name) {
       for (const screen of ['title', 'pause', 'over']) {
-        el(`screen-${screen}`).classList.toggle('show', screen === name);
+        grab(`screen-${screen}`).classList.toggle('show', screen === name);
       }
-      el('hud').classList.toggle('dim', name !== null);
+      $.hud.classList.toggle('dim', name !== null);
     },
     setGameOver(kind, cash, jobs) {
-      el('over-title').textContent = kind === 'busted' ? 'BUSTED!' : 'WASTED!';
-      el('over-text').textContent = kind === 'busted'
+      $['over-title'].textContent = kind === 'busted' ? 'BUSTED!' : 'WASTED!';
+      $['over-text'].textContent = kind === 'busted'
         ? 'The Costa Verde PD caught up with Alex. The crew will have to wait.'
         : 'Alex went down in Costa Verde. The city keeps moving without him.';
-      el('over-stats').textContent = `Cash kept: $${cash} · Jobs done: ${jobs}/${MISSION_DEFS.length}`;
+      $['over-stats'].textContent = `Cash kept: $${cash} · Jobs done: ${jobs}/${JOBS.length}`;
     },
   };
   return hud;
