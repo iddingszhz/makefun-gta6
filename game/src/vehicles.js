@@ -280,7 +280,8 @@ export function createVehicles(G) {
 
       // --- Traffic ---
       for (const car of traffic) {
-        let target = car.cruise;
+        // A wrecked car stays where it was shot: it does not keep cruising.
+        let target = car.health <= 0 ? 0 : car.cruise;
         // Slow for a car ahead in the same lane.
         for (const other of cars) {
           if (other === car) continue;

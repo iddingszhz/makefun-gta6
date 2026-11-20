@@ -123,6 +123,9 @@ export function createPlayer(G) {
       player.health = Math.max(0, player.health - amount);
       if (player.health <= 0) {
         player.dead = true;
+        // Go down like a knocked-down pedestrian, instead of standing dead.
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = 0.3;
         G.gameOver('wasted');
       }
     },
@@ -138,6 +141,8 @@ export function createPlayer(G) {
       player.heading = 0;
       player.cameraYaw = Math.PI;
       mesh.visible = true;
+      mesh.rotation.x = 0;
+      mesh.position.y = 0;
     },
   };
   return player;

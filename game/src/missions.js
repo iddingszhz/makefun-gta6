@@ -11,6 +11,26 @@ function randomStreetPoint(rng) {
   return horizontal ? { x: along, z: street } : { x: street, z: along };
 }
 
+// A checkpoint a short drive from `from`, so a timed route is a fair race
+// instead of an RNG lottery: three legs of 120–320 m each fit the 90 s limit
+// at a casual driving pace, with room to steal a car first.
+function chainedStreetPoint(rng, from, minDist, maxDist) {
+  const mid = (minDist + maxDist) / 2;
+  let best = null;
+  let bestScore = Infinity;
+  for (let i = 0; i < 24; i += 1) {
+    const p = randomStreetPoint(rng);
+    const d = Math.abs(p.x - from.x) + Math.abs(p.z - from.z);
+    if (d >= minDist && d <= maxDist) return p;
+    const score = Math.abs(d - mid);
+    if (score < bestScore) {
+      bestScore = score;
+      best = p;
+    }
+  }
+  return best;
+}
+
 export function createMissions(G) {
   const rng = G.rng;
   let index = 0; // next story mission
@@ -32,7 +52,10 @@ export function createMissions(G) {
       active = { def, stage: 'steal', target: { ...places.garage } };
       G.hud.setObjective(`${def.title}: Steal any car (press E near one)`);
     } else if (def.id === 'courier-rush') {
-      const points = [randomStreetPoint(rng), randomStreetPoint(rng), randomStreetPoint(rng)];
+      // Chained from the player's spot, so the whole route stays near 600 m
+      // and the 90 s limit is the same race every time, not a draw.
+      const points = [chainedStreetPoint(rng, { x: G.player.pos.x, z: G.player.pos.z }, 60, 320)];
+      for (let i = 1; i < 3; i += 1) points.push(chainedStreetPoint(rng, points[i - 1], 120, 320));
       active = { def, stage: 'run', checkpoints: points, checkpointIndex: 0, timer: def.timeLimit, target: points[0] };
       setBeacon(points[0].x, points[0].z);
       G.hud.setObjective(`${def.title}: Checkpoint 1 of 3 — ${Math.ceil(def.timeLimit)}s left`);

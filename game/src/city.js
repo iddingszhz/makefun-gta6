@@ -73,9 +73,9 @@ export function createCity(scene, rng) {
   const group = new THREE.Group();
   scene.add(group);
 
-  const roadTex = makeRoadTexture();
-  const walkTex = makeSidewalkTexture();
-  const sandTex = makeSandTexture();
+  const roadTex = makeRoadTexture(rng);
+  const walkTex = makeSidewalkTexture(rng);
+  const sandTex = makeSandTexture(rng);
 
   // Ground slab: sand everywhere, so the beach edge and the marina read as coast.
   const ground = new THREE.Mesh(

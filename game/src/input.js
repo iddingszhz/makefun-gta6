@@ -27,7 +27,9 @@ export function createInput(canvas) {
     if (event.code === 'KeyE' && !event.repeat) actions |= ACT_INTERACT;
     else if (event.code === 'KeyR' && !event.repeat) actions |= ACT_RELOAD;
     else if ((event.code === 'KeyP' || event.code === 'Escape') && !event.repeat) actions |= ACT_PAUSE;
-    else if ((event.code === 'Enter' || event.code === 'Space') && !event.repeat) actions |= ACT_CONFIRM;
+    // Enter only: Space is the handbrake, and a held brake must not confirm
+    // a restart the instant the game-over screen appears.
+    else if (event.code === 'Enter' && !event.repeat) actions |= ACT_CONFIRM;
     keys.add(event.code);
     if (FORWARD.has(event.code) || BACK.has(event.code) || LEFT.has(event.code) || RIGHT.has(event.code) || BRAKE.has(event.code)) {
       event.preventDefault();

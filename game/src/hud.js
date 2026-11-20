@@ -13,6 +13,7 @@ export function createHud(G) {
   let bannerTimer = 0;
   let flashTimer = 0;
   let kick = 0;
+  let missionCardTimer = 0; // one timer per card: a new card must not be hidden by the old one's
 
   const hud = {
     setWanted(stars) {
@@ -67,7 +68,8 @@ export function createHud(G) {
       el('mission-card-title').textContent = title;
       el('mission-card-text').textContent = text;
       card.classList.add('show');
-      setTimeout(() => card.classList.remove('show'), 6000);
+      clearTimeout(missionCardTimer);
+      missionCardTimer = setTimeout(() => card.classList.remove('show'), 6000);
     },
     kickCamera() {
       kick = 0.02;

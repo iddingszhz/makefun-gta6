@@ -125,6 +125,13 @@ export function createAudio() {
         setTimeout(() => tone(freq, 0.3, 0.22, 'triangle'), i * 160);
       });
     },
+    // Silence the engine and siren loops (the game-over screen has no update
+    // loop, so without this the last loop gains would drone on forever).
+    stop() {
+      if (!ctx) return;
+      engineGain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+      sirenGain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+    },
     toggleMute() {
       muted = !muted;
       if (master) master.gain.value = muted ? 0 : 0.5;

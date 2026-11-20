@@ -49,13 +49,13 @@ export function makeFacadeTexture(rng, base, floors, cols) {
 }
 
 // Asphalt with a dashed centre line, tiled along a road strip.
-export function makeRoadTexture() {
+export function makeRoadTexture(rng) {
   const texture = canvasTexture(128, 128, (ctx, w, h) => {
     ctx.fillStyle = '#33363d';
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = 'rgba(255,255,255,0.05)';
     for (let i = 0; i < 200; i += 1) {
-      ctx.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+      ctx.fillRect(rng() * w, rng() * h, 2, 2);
     }
     ctx.fillStyle = '#d8c25a';
     ctx.fillRect(w / 2 - 2, 8, 4, 40);
@@ -70,7 +70,7 @@ export function makeRoadTexture() {
 }
 
 // Pale pavement tiles with a darker grid.
-export function makeSidewalkTexture() {
+export function makeSidewalkTexture(rng) {
   const texture = canvasTexture(128, 128, (ctx, w, h) => {
     ctx.fillStyle = '#b9ac93';
     ctx.fillRect(0, 0, w, h);
@@ -88,7 +88,7 @@ export function makeSidewalkTexture() {
     }
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     for (let i = 0; i < 120; i += 1) {
-      ctx.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+      ctx.fillRect(rng() * w, rng() * h, 2, 2);
     }
   });
   texture.wrapS = THREE.RepeatWrapping;
@@ -97,13 +97,13 @@ export function makeSidewalkTexture() {
 }
 
 // Warm sand for the beach strip and the marina edge.
-export function makeSandTexture() {
+export function makeSandTexture(rng) {
   return canvasTexture(128, 128, (ctx, w, h) => {
     ctx.fillStyle = '#d9c48f';
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = 'rgba(160,130,80,0.25)';
     for (let i = 0; i < 260; i += 1) {
-      ctx.fillRect(Math.random() * w, Math.random() * h, 2, 1);
+      ctx.fillRect(rng() * w, rng() * h, 2, 1);
     }
   });
 }

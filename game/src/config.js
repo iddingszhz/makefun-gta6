@@ -71,8 +71,11 @@ export const WANTED = {
   decayDelay: 18, // seconds with no crime and no police nearby before it drops
   decayStep: 9, // seconds per star lost while hidden
   policePerStar: [0, 1, 2, 2, 3, 4],
+  policeTopSpeedMax: 36, // a good driver can always pull away; 5 stars must not outrun the player
+  bustStopRange: 8, // a police car this close to a player on foot slows to a stop, so the bust can land
   bustedRange: 7, // a police car this close to the player on foot starts a bust
   bustedTime: 3, // seconds inside bustedRange to get busted
+  reinforceDelay: 8, // seconds before a destroyed police car is replaced
 };
 
 // --- Combat ----------------------------------------------------------------

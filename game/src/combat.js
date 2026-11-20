@@ -20,6 +20,13 @@ export function createCombat(G) {
   flash.visible = false;
   G.scene.add(flash);
 
+  // Buildings block shots: collect them once (they never move). A bullet
+  // that hits one stops there instead of passing through to a target behind it.
+  const buildings = [];
+  G.city.group.traverse((obj) => {
+    if (obj.userData && obj.userData.w !== undefined && obj.userData.h !== undefined) buildings.push(obj);
+  });
+
   const combat = {
     get ammo() {
       return ammo;
@@ -39,14 +46,19 @@ export function createCombat(G) {
       }
       ammo -= 1;
       G.audio.gunshot();
-      // Aim from the camera through the centre of the screen.
-      const origin = G.camera.position.clone();
+      // Aim from the player's chest, along the camera's view direction
+      // flattened to horizontal: the camera pitches down at the player, so
+      // its raw forward ray would dig into the ground a few metres ahead
+      // and never reach a target. A level ray from chest height does.
+      const origin = G.player.pos.clone();
+      origin.y = 1.2;
       const dir = new THREE.Vector3();
       G.camera.getWorldDirection(dir);
+      dir.y = 0;
+      if (dir.lengthSq() < 0.0001) dir.set(Math.sin(G.player.heading), 0, Math.cos(G.player.heading));
+      dir.normalize();
       raycaster.set(origin, dir);
-      // The player's own figure is at the centre of the aim: start the ray past it.
-      raycaster.ray.origin.addScaledVector(dir, 2.5);
-      // Hit the nearest pedestrian, police car or building.
+      // Hit the nearest pedestrian, police car, building or parked car.
       const targets = [];
       for (const ped of G.peds.list) {
         if (ped.state !== 'down') targets.push(ped.mesh);
@@ -55,40 +67,45 @@ export function createCombat(G) {
       for (const car of G.vehicles.cars) {
         if (car.kind === 'traffic' || car.kind === 'parked') targets.push(car.mesh);
       }
-      const hits = raycaster.intersectObjects(targets, true);
+      const hits = raycaster.intersectObjects([...targets, ...buildings], true);
       let hitSomething = false;
       if (hits.length > 0) {
         const hit = hits[0];
         hitSomething = true;
-        let obj = hit.object;
-        while (obj && !obj.userData.pedRef && !obj.userData.carRef) obj = obj.parent;
         const point = hit.point;
-        G.peds.scare(point.x, point.z, 25);
-        // Find which pedestrian or car the hit belongs to.
-        let pedHit = null;
-        for (const ped of G.peds.list) {
-          if (ped.mesh === hit.object || ped.mesh.children.includes(hit.object) || ped.mesh === obj) pedHit = ped;
-        }
-        if (pedHit) {
-          pedHit.health -= COMBAT.pistolDamage;
-          if (pedHit.health <= 0) {
-            G.peds.knockDown(pedHit);
-            G.police.commitCrime(1, 'You shot a pedestrian!');
-          } else {
-            pedHit.state = 'flee';
-            pedHit.timer = 3;
-          }
+        if (buildings.includes(hit.object) || buildings.includes(hit.object.parent)) {
+          // A building stopped the bullet: noise and a scare, no damage.
+          G.peds.scare(point.x, point.z, 25);
         } else {
-          // A car took the bullet: damage it, and the police notice.
-          for (const car of G.vehicles.cars) {
-            if (car.mesh === hit.object || car.mesh === obj || car.mesh.children.includes(hit.object)) {
-              if (car.kind === 'police') {
-                G.vehicles.damageCar(car, COMBAT.pistolDamage);
-                G.police.commitCrime(1, 'You shot at the police!');
-              } else {
-                G.vehicles.damageCar(car, COMBAT.pistolDamage * 0.5);
+          let obj = hit.object;
+          while (obj && !obj.userData.pedRef && !obj.userData.carRef) obj = obj.parent;
+          G.peds.scare(point.x, point.z, 25);
+          // Find which pedestrian or car the hit belongs to.
+          let pedHit = null;
+          for (const ped of G.peds.list) {
+            if (ped.mesh === hit.object || ped.mesh.children.includes(hit.object) || ped.mesh === obj) pedHit = ped;
+          }
+          if (pedHit) {
+            pedHit.health -= COMBAT.pistolDamage;
+            if (pedHit.health <= 0) {
+              G.peds.knockDown(pedHit);
+              G.police.commitCrime(1, 'You shot a pedestrian!');
+            } else {
+              pedHit.state = 'flee';
+              pedHit.timer = 3;
+            }
+          } else {
+            // A car took the bullet: damage it, and the police notice.
+            for (const car of G.vehicles.cars) {
+              if (car.mesh === hit.object || car.mesh === obj || car.mesh.children.includes(hit.object)) {
+                if (car.kind === 'police') {
+                  G.vehicles.damageCar(car, COMBAT.pistolDamage);
+                  G.police.commitCrime(1, 'You shot at the police!');
+                } else {
+                  G.vehicles.damageCar(car, COMBAT.pistolDamage * 0.5);
+                }
+                break;
               }
-              break;
             }
           }
         }

@@ -78,6 +78,7 @@ const G = {
     if (G.state === 'over') return;
     G.state = 'over';
     G.audio.busted();
+    G.audio.stop();
     G.save();
     G.hud.setGameOver(kind, G.player.cash, G.missions.completed);
     G.hud.showScreen('over');

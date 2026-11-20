@@ -12,6 +12,7 @@ export function createPolice(G) {
   let quietTimer = 0; // time since the last crime, while no police is near
   let decayTimer = 0;
   let bustedTimer = 0;
+  let reinforceTimer = 0; // a destroyed police car is not replaced at once
 
   const police = {
     get stars() {
@@ -33,9 +34,22 @@ export function createPolice(G) {
     },
     update(dt) {
       const playerPos = G.player.pos;
+      if (reinforceTimer > 0) reinforceTimer -= dt;
+      // --- A wrecked police car is out of the chase: tow it away, and hold
+      // its replacement for a few seconds so shooting a cop buys breathing room.
+      for (const car of [...policeCars]) {
+        if (car.health > 0) continue;
+        G.scene.remove(car.mesh);
+        const i = policeCars.indexOf(car);
+        if (i >= 0) policeCars.splice(i, 1);
+        const j = G.vehicles.cars.indexOf(car);
+        if (j >= 0) G.vehicles.cars.splice(j, 1);
+        reinforceTimer = WANTED.reinforceDelay;
+        G.hud.flash('You took out a police car — reinforcements are coming.');
+      }
       // --- Spawn police to match the wanted level ---
       const want = WANTED.policePerStar[stars];
-      while (policeCars.length < want) {
+      while (policeCars.length < want && reinforceTimer <= 0) {
         const edge = pick(rng, ['n', 's', 'e', 'w']);
         let x = 0;
         let z = 0;
@@ -102,8 +116,12 @@ export function createPolice(G) {
         let diff = wantHeading - car.heading;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
-        const topSpeed = 26 + stars * 2.5;
-        const target = dist < 6 ? topSpeed * 0.55 : topSpeed;
+        const topSpeed = Math.min(WANTED.policeTopSpeedMax, 26 + stars * 2.5);
+        // On foot, a close police car parks on the suspect instead of
+        // orbiting at speed: that is what lets the 3-second bust land.
+        const target = !G.player.inCar && dist < WANTED.bustStopRange
+          ? Math.min(3, dist * 0.5)
+          : (dist < 6 ? topSpeed * 0.55 : topSpeed);
         car.speed += (target - car.speed) * Math.min(1, dt * 1.2);
         car.heading += Math.max(-2.6 * dt, Math.min(2.6 * dt, diff * 3 * dt));
         car.pos.x += Math.sin(car.heading) * car.speed * dt;
@@ -161,6 +179,7 @@ export function createPolice(G) {
       quietTimer = 0;
       decayTimer = 0;
       bustedTimer = 0;
+      reinforceTimer = 0;
       for (const car of [...policeCars]) {
         G.scene.remove(car.mesh);
         const i = G.vehicles.cars.indexOf(car);
