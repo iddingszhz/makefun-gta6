@@ -10,11 +10,16 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
-const args = process.argv.slice(2);
-const portFlag = args.indexOf('--port');
-const wanted = portFlag === -1 ? 8080 : Number(args[portFlag + 1]);
-const port = Number.isInteger(wanted) && wanted > 0 && wanted < 65536 ? wanted : 8080;
+const port = pickPort(process.argv.slice(2));
 
+function pickPort(args) {
+  const at = args.indexOf('--port');
+  const wanted = at === -1 ? 8080 : Number(args[at + 1]);
+  return Number.isInteger(wanted) && wanted > 0 && wanted < 65536 ? wanted : 8080;
+}
+
+// Extension -> content type, for the files a browser game actually serves.
+// Anything not listed falls back to a binary download.
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -43,11 +48,30 @@ function mimeFor(file) {
   return TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream';
 }
 
+// Resolve a request path to a file inside game/, or null if it escapes.
 function resolveInside(pathname) {
   if (pathname.endsWith('/')) pathname += 'index.html';
   const file = resolve(join(root, normalize(pathname)));
   if (file !== root && !file.startsWith(root + sep)) return null;
   return file;
+}
+
+function serveFile(file, res) {
+  let size;
+  try {
+    const stats = statSync(file);
+    if (!stats.isFile()) throw new Error('not a file');
+    size = stats.size;
+  } catch {
+    res.writeHead(404).end('not found');
+    return;
+  }
+  res.writeHead(200, {
+    'content-type': mimeFor(file),
+    'content-length': size,
+    'cache-control': 'no-store',
+  });
+  createReadStream(file).pipe(res);
 }
 
 createServer((req, res) => {
@@ -64,21 +88,7 @@ createServer((req, res) => {
     res.writeHead(403).end('forbidden');
     return;
   }
-  let size;
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
-  } catch {
-    res.writeHead(404).end('not found');
-    return;
-  }
-  res.writeHead(200, {
-    'content-type': mimeFor(file),
-    'content-length': size,
-    'cache-control': 'no-store',
-  });
-  createReadStream(file).pipe(res);
+  serveFile(file, res);
 }).listen(port, '127.0.0.1', () => {
   console.log(`game/ is on http://localhost:${port}`);
 });

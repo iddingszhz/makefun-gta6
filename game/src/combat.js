@@ -1,159 +1,144 @@
-// Costa Verde v3 — combat: a simple pistol. Click to fire a hitscan shot
-// from the player toward where the camera looks; pedestrians and police cars
-// take damage, the world answers with a flash, a crack and a little shake.
+// Costa Verde — combat: a simple pistol. Click to fire a hitscan shot
+// from the player's chest, level with the ground, in the direction the
+// camera faces. Pedestrians and police cars take damage, and the world
+// answers with a flash, a crack and a little shake.
 
 import * as THREE from 'three';
 import { GUN } from './config.js';
 
+// The aim direction: where the camera looks, flattened to the horizontal
+// plane. A shot must not climb into the sky when the camera pitches down.
+function aimDirection(G) {
+  const dir = new THREE.Vector3();
+  G.camera.getWorldDirection(dir);
+  dir.y = 0;
+  if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
+  return dir.normalize();
+}
+
+// Every mesh a shot can hit, with the thing it belongs to and the damage
+// it takes. Buildings are solid and stop the shot; people and cars are not.
+function collectTargets(G) {
+  const targets = [];
+  for (const ped of G.peds.list) {
+    if (ped.state === 'down') continue;
+    const mesh = ped.mesh;
+    targets.push({ mesh, kind: 'ped', ped, hp: ped.health });
+    mesh.traverse((child) => {
+      if (child.isMesh && child !== mesh) targets.push({ mesh: child, kind: 'ped', ped, hp: ped.health });
+    });
+  }
+  for (const car of [...G.vehicles.traffic, ...G.vehicles.parked, ...G.police.list]) {
+    if (car.wrecked) continue;
+    targets.push({ mesh: car.mesh, kind: 'car', car, hp: car.health });
+    car.mesh.traverse((child) => {
+      if (child.isMesh) targets.push({ mesh: child, kind: 'car', car, hp: car.health });
+    });
+  }
+  for (const solid of G.city.solids) {
+    targets.push({ mesh: solid, kind: 'wall', hp: Infinity });
+  }
+  return targets;
+}
+
 export function createCombat(G) {
   const ray = new THREE.Raycaster();
   ray.far = GUN.range;
-  let ammo = GUN.mag;
-  let spare = 60;
-  let reloadLeft = 0;
-  let flashLeft = 0;
-
-  // A small glowing sphere at the muzzle, shown for a blink after each shot.
-  const flash = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22, 8, 6),
-    new THREE.MeshBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0 }),
-  );
-  flash.visible = false;
-  G.scene.add(flash);
-
-  // Buildings block shots: collect them once (they never move). A bullet
-  // that hits one stops there instead of passing through to a target behind it.
-  const walls = [];
-  G.city.group.traverse((obj) => {
-    if (obj.userData && obj.userData.w !== undefined && obj.userData.h !== undefined) walls.push(obj);
-  });
-
-  function findCarFor(mesh) {
-    for (const car of G.vehicles.cars) {
-      if (car.mesh === mesh || car.mesh.children.includes(mesh)) return car;
-    }
-    return null;
-  }
+  const tracerGeo = new THREE.BufferGeometry();
+  const tracerMat = new THREE.LineBasicMaterial({ color: 0xffd34d });
+  const tracer = new THREE.Line(tracerGeo, tracerMat);
+  tracer.visible = false;
+  G.scene.add(tracer);
+  let tracerLeft = 0;
 
   const combat = {
-    get ammo() {
-      return ammo;
-    },
-    get reserve() {
-      return spare;
-    },
-    get reloading() {
-      return reloadLeft > 0;
-    },
-    shoot() {
-      if (G.state !== 'play' || G.player.dead || G.player.inCar) return;
-      if (reloadLeft > 0) return;
-      if (ammo <= 0) {
-        combat.reload();
+    ammo: GUN.mag,
+    spare: 60,
+    reloading: false,
+    reloadLeft: 0,
+    fire() {
+      if (combat.reloading) return;
+      if (combat.ammo <= 0) {
+        combat.startReload();
         return;
       }
-      ammo -= 1;
-      G.audio.gunshot();
-      // Aim from the player's chest, along the camera's view direction
-      // flattened to horizontal: the camera pitches down at the player, so
-      // its raw forward ray would dig into the ground a few metres ahead
-      // and never reach a target. A level ray from chest height does.
+      combat.ammo -= 1;
+      const dir = aimDirection(G);
+      // The shot leaves from chest height, level — not from the pitched
+      // camera — so a target 12 m away is actually hit.
       const origin = G.player.pos.clone();
       origin.y = 1.2;
-      const dir = new THREE.Vector3();
-      G.camera.getWorldDirection(dir);
-      dir.y = 0;
-      if (dir.lengthSq() < 0.0001) dir.set(Math.sin(G.player.heading), 0, Math.cos(G.player.heading));
-      dir.normalize();
       ray.set(origin, dir);
-      // Hit the nearest pedestrian, police car, building or parked car.
-      const targets = [];
-      for (const ped of G.peds.list) {
-        if (ped.state !== 'down') targets.push(ped.mesh);
-      }
-      for (const car of G.police.list) targets.push(car.mesh);
-      for (const car of G.vehicles.cars) {
-        if (car.kind === 'traffic' || car.kind === 'parked') targets.push(car.mesh);
-      }
-      const hits = ray.intersectObjects([...targets, ...walls], true);
-      let struck = false;
+      const targets = collectTargets(G);
+      const hits = ray.intersectObjects(targets.map((t) => t.mesh), true);
+      const end = origin.clone().add(dir.clone().multiplyScalar(GUN.range));
       if (hits.length > 0) {
         const hit = hits[0];
-        struck = true;
-        const point = hit.point;
-        const isWall = walls.includes(hit.object) || walls.includes(hit.object.parent);
-        if (isWall) {
-          // A building stopped the bullet: noise and a scare, no damage.
-          G.peds.scare(point.x, point.z, 25);
-        } else {
-          G.peds.scare(point.x, point.z, 25);
-          // Which pedestrian or car did the bullet reach?
-          let pedHit = null;
-          for (const ped of G.peds.list) {
-            if (ped.mesh === hit.object || ped.mesh.children.includes(hit.object)) pedHit = ped;
+        end.copy(hit.point);
+        const entry = targets.find((t) => {
+          let node = hit.object;
+          while (node) {
+            if (node === t.mesh) return true;
+            node = node.parent;
           }
-          if (pedHit) {
-            pedHit.health -= GUN.damage;
-            if (pedHit.health <= 0) {
-              G.peds.knockDown(pedHit);
-              G.police.commitCrime(1, 'You shot a pedestrian!');
-            } else {
-              pedHit.state = 'flee';
-              pedHit.timer = 3;
+          return false;
+        });
+        if (entry && entry.kind !== 'wall') {
+          if (entry.kind === 'ped') {
+            entry.ped.health -= GUN.damage;
+            G.peds.scare(entry.ped.pos.x, entry.ped.pos.z);
+            if (entry.ped.health <= 0) {
+              G.peds.knockDown(entry.ped);
+              G.police.addHeat(1, 'Pedestrian shot');
             }
-          } else {
-            const carHit = findCarFor(hit.object);
-            if (carHit) {
-              if (carHit.kind === 'police') {
-                G.vehicles.damageCar(carHit, GUN.damage);
-                G.police.commitCrime(1, 'You shot at the police!');
-              } else {
-                G.vehicles.damageCar(carHit, GUN.damage * 0.5);
-              }
+          } else if (entry.kind === 'car') {
+            entry.car.health -= GUN.damage;
+            if (entry.car.health <= 0) {
+              entry.car.health = 0;
+              entry.car.wrecked = true;
+              entry.car.speed = 0;
+              G.audio.crash(1);
+              G.hud.flash(entry.car.isCop ? 'Police car destroyed — backup is coming' : 'Car destroyed');
+              if (entry.car.isCop) G.police.addHeat(1, 'Police car destroyed');
             }
           }
         }
       }
-      // Muzzle flash at the player's hand, plus a tracer line that fades fast.
-      const hand = G.player.pos.clone();
-      hand.y = 1.3;
-      hand.x += Math.sin(G.player.heading) * 0.5;
-      hand.z += Math.cos(G.player.heading) * 0.5;
-      flash.position.copy(hand);
-      flash.visible = true;
-      flash.material.opacity = 1;
-      flashLeft = 0.06;
+      // A bright line from the muzzle to the impact point, gone in 60 ms.
+      tracerGeo.setFromPoints([origin, end]);
+      tracer.visible = true;
+      tracerLeft = 0.06;
+      G.audio.gunshot();
       G.hud.kickCamera();
-      if (!struck) G.peds.scare(G.player.pos.x, G.player.pos.z, 20);
-      G.hud.setAmmo(ammo, spare);
+      G.peds.scare(origin.x, origin.z, 30);
+      if (combat.ammo === 0) combat.startReload();
     },
-    reload() {
-      if (reloadLeft > 0 || ammo === GUN.mag || spare <= 0) return;
-      reloadLeft = GUN.reload;
-      G.hud.setAmmo(ammo, spare, true);
+    startReload() {
+      if (combat.reloading || combat.spare <= 0) return;
+      combat.reloading = true;
+      combat.reloadLeft = GUN.reload;
     },
     update(dt) {
-      if (reloadLeft > 0) {
-        reloadLeft -= dt;
-        if (reloadLeft <= 0) {
-          const need = GUN.mag - ammo;
-          const take = Math.min(need, spare);
-          ammo += take;
-          spare -= take;
-          G.hud.setAmmo(ammo, spare);
-        }
+      if (tracerLeft > 0) {
+        tracerLeft -= dt;
+        if (tracerLeft <= 0) tracer.visible = false;
       }
-      if (flashLeft > 0) {
-        flashLeft -= dt;
-        flash.material.opacity = Math.max(0, flashLeft / 0.06);
-        if (flashLeft <= 0) flash.visible = false;
+      if (combat.reloading) {
+        combat.reloadLeft -= dt;
+        if (combat.reloadLeft <= 0) {
+          const load = Math.min(GUN.mag, combat.spare);
+          combat.ammo = load;
+          combat.spare -= load;
+          combat.reloading = false;
+        }
       }
     },
     reset() {
-      ammo = GUN.mag;
-      spare = 60;
-      reloadLeft = 0;
-      G.hud.setAmmo(ammo, spare);
+      combat.ammo = GUN.mag;
+      combat.spare = 60;
+      combat.reloading = false;
+      combat.reloadLeft = 0;
+      tracer.visible = false;
     },
   };
   return combat;

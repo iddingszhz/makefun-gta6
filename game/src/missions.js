@@ -1,249 +1,272 @@
-// Costa Verde v3 — jobs. Mara calls with five story jobs, in order, each with
+// Costa Verde — jobs. Mara calls with five story jobs, in order, each with
 // a beacon in the world, an objective line on the HUD and a cash reward.
 // Between jobs, a repeatable courier run pays for free-roam driving.
 
 import * as THREE from 'three';
 import { AVENUES, JOBS, SIDE_PAY, between, pickOne } from './config.js';
 
+// A point on a street: one avenue, one position along it.
 function streetPoint(rng) {
   const across = rng() > 0.5;
   const avenue = pickOne(rng, AVENUES);
-  const along = between(rng, -260, 260);
-  return across ? { x: along, z: avenue } : { x: avenue, z: along };
+  const along = between(rng, -280, 280);
+  return across ? { x: avenue, z: along } : { x: along, z: avenue };
 }
 
-// A checkpoint a short drive from `from`, so a timed route is a fair race
-// instead of an RNG lottery: three legs of 120–320 m each fit the 90 s limit
-// at a casual driving pace, with room to steal a car first.
-function chainedPoint(rng, from, minD, maxD) {
-  const mid = (minD + maxD) / 2;
-  let best = null;
-  let bestScore = Infinity;
-  for (let i = 0; i < 24; i += 1) {
+// A point in a block, well clear of the buildings' footprints.
+function blockPoint(rng) {
+  const avenue = pickOne(rng, AVENUES);
+  const along = between(rng, -280, 280);
+  const offset = 35 + rng() * 20;
+  const sign = rng() > 0.5 ? 1 : -1;
+  return { x: avenue + offset * sign, z: along };
+}
+
+// The glowing ring in the world that marks where to go next.
+function makeBeacon(G, x, z, radius = 3) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(radius - 0.5, radius, 40),
+    new THREE.MeshBasicMaterial({ color: 0xffd34d, side: THREE.DoubleSide }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(x, 0.08, z);
+  G.scene.add(ring);
+  return ring;
+}
+
+// The next courier checkpoint: 120–320 m away in Manhattan distance,
+// chained so the run is always winnable on the clock.
+function nextCheckpoint(rng, from) {
+  for (let tries = 0; tries < 50; tries += 1) {
     const p = streetPoint(rng);
     const d = Math.abs(p.x - from.x) + Math.abs(p.z - from.z);
-    if (d >= minD && d <= maxD) return p;
-    const score = Math.abs(d - mid);
-    if (score < bestScore) {
-      bestScore = score;
-      best = p;
-    }
+    if (d >= 120 && d <= 320) return p;
   }
-  return best;
+  return { x: Math.max(-280, Math.min(280, from.x + 160)), z: from.z };
 }
 
 export function createMissions(G) {
   const rng = G.rng;
-  let next = 0; // next story job
-  let current = null; // { def, stage, target, timer, checkpoints, ... }
-  let courier = null;
-  let done = 0;
-
-  function showBeacon(x, z) {
-    G.city.beacon.position.set(x, 0, z);
-    G.city.beacon.visible = true;
-  }
-  function hideBeacon() {
-    G.city.beacon.visible = false;
-  }
-
-  function beginJob(def) {
-    const places = G.city.places;
-    if (def.id === 'hot-wheels') {
-      current = { def, stage: 'steal', target: { ...places.garage } };
-      G.hud.setObjective(`${def.title}: Steal any car (press E near one)`);
-    } else if (def.id === 'courier-rush') {
-      // Chained from the player's spot, so the whole route stays near 600 m
-      // and the 90 s limit is the same race every time, not a draw.
-      const points = [chainedPoint(rng, { x: G.player.pos.x, z: G.player.pos.z }, 60, 320)];
-      for (let i = 1; i < 3; i += 1) points.push(chainedPoint(rng, points[i - 1], 120, 320));
-      current = { def, stage: 'run', checkpoints: points, checkpointIndex: 0, timer: def.limit, target: points[0] };
-      showBeacon(points[0].x, points[0].z);
-      G.hud.setObjective(`${def.title}: Checkpoint 1 of 3 — ${Math.ceil(def.limit)}s left`);
-    } else if (def.id === 'heat-check') {
-      current = { def, stage: 'raise', target: null };
-      G.hud.setObjective(`${def.title}: Get to 3 stars — steal a car, cause chaos`);
-    } else if (def.id === 'the-pickup') {
-      current = { def, stage: 'pickup', target: { ...places.coralAve } };
-      showBeacon(places.coralAve.x, places.coralAve.z);
-      G.hud.setObjective(`${def.title}: Pick up the passenger on Coral Ave`);
-    } else if (def.id === 'the-big-score') {
-      current = { def, stage: 'rob', target: { ...places.store }, robTimer: 0 };
-      showBeacon(places.store.x, places.store.z);
-      G.hud.setObjective(`${def.title}: Rob the Sunrise Mart — stand in the marker`);
-    }
-    G.hud.showMissionCard(def.title, def.text);
-  }
-
-  function finishJob() {
-    const def = current.def;
-    G.player.cash += def.reward;
-    done += 1;
-    G.hud.banner(`Mission complete: ${def.title} — +$${def.reward}`);
-    G.audio.missionDone();
-    G.hud.setCash(G.player.cash);
-    G.hud.setMissions(done, JOBS.length);
-    hideBeacon();
-    current = null;
-    next += 1;
-    G.save();
-    if (next >= JOBS.length) {
-      G.hud.setObjective('All story missions done! Courier jobs still pay — free roam.');
-    }
-  }
-
-  function dropJob(reason) {
-    if (!current) return;
-    G.hud.banner(`Mission failed: ${reason}`);
-    hideBeacon();
-    current = null;
-    G.hud.setObjective('Talk to Mara — press M for the next job.');
-  }
-
-  const missions = {
-    get active() {
-      return current;
+  const api = {
+    active: null,
+    nextIndex: 0,
+    done: 0,
+    sideJob: null,
+    beacon: null,
+    get completed() { return api.done; },
+    startNext() { return api.beginJob(); },
+    // Jump the story to a state: done jobs completed, nextIndex the job to
+    // start. Used by the play-test suite to reach each job directly.
+    loadProgress(done, next) {
+      api.done = done;
+      api.nextIndex = next;
+      G.hud.setMissions(api.done, JOBS.length);
     },
-    get sideJob() {
-      return courier;
-    },
-    get completed() {
-      return done;
-    },
-    get nextIndex() {
-      return next;
-    },
-    startNext() {
-      if (current) return;
-      if (next >= JOBS.length) {
-        G.hud.banner('No more story jobs — try a courier run (press M).');
-        return;
+    setBeacon(x, z, radius = 3) {
+      if (api.beacon) {
+        G.scene.remove(api.beacon);
+        api.beacon = null;
       }
-      beginJob(JOBS[next]);
+      if (x === null || x === undefined) return;
+      api.beacon = makeBeacon(G, x, z, radius);
+    },
+    // Start the next story job. Each job stages itself: it picks its
+    // locations, sets the objective and the beacon, and registers a handler
+    // that runs every frame until the job completes or fails.
+    beginJob() {
+      const job = JOBS[api.nextIndex];
+      if (!job) return false;
+      const player = G.player;
+      const active = { ...job, stage: 'start', timer: job.limit || 0, target: null, data: {} };
+      if (job.id === 'hot-wheels') {
+        active.target = { x: 0, z: 20 };
+      } else if (job.id === 'courier-rush') {
+        // Three checkpoints, chained so each is 120–320 m from the last.
+        active.checkpoints = [];
+        let from = player.pos;
+        for (let i = 0; i < 3; i += 1) {
+          const p = nextCheckpoint(rng, from);
+          active.checkpoints.push(p);
+          from = p;
+        }
+        active.checkpointIndex = 0;
+        active.target = active.checkpoints[0];
+      } else if (job.id === 'heat-check') {
+        active.target = null;
+      } else if (job.id === 'the-pickup') {
+        active.target = streetPoint(rng);
+      } else if (job.id === 'the-big-score') {
+        active.target = { x: 210, z: -210 };
+      }
+      // Heat Check starts in its raise stage: get to 3 stars first.
+      if (job.id === 'heat-check') active.stage = 'raise';
+      api.active = active;
+      const objectives = {
+        'hot-wheels': 'Hot Wheels: Deliver the car to Mara\'s Garage',
+        'courier-rush': 'Courier Rush: Hit all 3 checkpoints before time runs out',
+        'heat-check': 'Heat Check: Reach 3 stars, then lose the heat',
+        'the-pickup': 'The Pickup: Collect the passenger, then deliver to the Marina',
+        'the-big-score': 'The Big Score: Rob the Sunrise Mart, then lose 4 stars and reach the Hideout',
+      };
+      G.hud.setObjective(objectives[job.id]);
+      G.hud.showMissionCard(job.title, job.text);
+      G.audio.pickup();
+      if (active.target) api.setBeacon(active.target.x, active.target.z);
+      return true;
+    },
+    completeJob() {
+      const active = api.active;
+      if (!active) return;
+      G.cash += active.reward;
+      api.done += 1;
+      api.nextIndex += 1;
+      api.active = null;
+      api.setBeacon(null);
+      G.hud.setCash(G.cash);
+      G.hud.setMissions(api.done, JOBS.length);
+      G.hud.banner(`Job Complete: ${active.title} +$${active.reward}`);
+      G.hud.showMissionCard(active.title, `Paid $${active.reward}. Mara is impressed.`);
+      G.audio.missionDone();
+      G.save();
+    },
+    dropJob() {
+      api.active = null;
+      api.setBeacon(null);
+      G.hud.setObjective('Talk to Mara — press M for the next job.');
     },
     startSideJob() {
-      if (courier || current) return;
-      const points = [streetPoint(rng), streetPoint(rng)];
-      courier = { checkpoints: points, checkpointIndex: 0, target: points[0] };
-      showBeacon(points[0].x, points[0].z);
-      G.hud.setObjective(`Courier job: Checkpoint 1 of 2 — $${SIDE_PAY} on delivery`);
-      G.hud.banner('Courier job started — follow the beacon.');
+      api.sideJob = { target: nextCheckpoint(rng, G.player.pos), paid: SIDE_PAY };
+      api.setBeacon(api.sideJob.target.x, api.sideJob.target.z);
+      G.hud.setObjective('Side Job: Deliver the package — $150');
+      G.hud.banner('Side Job: Courier run — $150');
+    },
+    completeSideJob() {
+      G.cash += api.sideJob.paid;
+      api.sideJob = null;
+      api.setBeacon(null);
+      G.hud.setCash(G.cash);
+      G.hud.banner('Side Job Complete: +$150');
+      G.audio.missionDone();
+      G.save();
     },
     update(dt) {
-      const pp = G.player.pos;
-      // --- Story job progress ---
-      if (current) {
-        const def = current.def;
-        if (def.id === 'hot-wheels') {
-          if (current.stage === 'steal' && G.player.inCar) {
-            current.stage = 'deliver';
-            current.target = { ...G.city.places.garage };
-            showBeacon(current.target.x, current.target.z);
-            G.hud.setObjective(`${def.title}: Deliver the car to Mara's Garage`);
-          } else if (current.stage === 'deliver' && G.player.inCar) {
-            const d = Math.hypot(pp.x - current.target.x, pp.z - current.target.z);
-            if (d < 8) finishJob();
-          }
-        } else if (def.id === 'courier-rush') {
-          current.timer -= dt;
-          const cp = current.checkpoints[current.checkpointIndex];
-          const d = Math.hypot(pp.x - cp.x, pp.z - cp.z);
-          G.hud.setObjective(`${def.title}: Checkpoint ${current.checkpointIndex + 1} of 3 — ${Math.max(0, Math.ceil(current.timer))}s left`);
-          if (d < 9) {
-            G.audio.pickup();
-            current.checkpointIndex += 1;
-            if (current.checkpointIndex >= current.checkpoints.length) {
-              finishJob();
-            } else {
-              const nxt = current.checkpoints[current.checkpointIndex];
-              current.target = nxt;
-              showBeacon(nxt.x, nxt.z);
-            }
-          } else if (current.timer <= 0) {
-            dropJob('Out of time on Courier Rush.');
-          }
-        } else if (def.id === 'heat-check') {
-          if (current.stage === 'raise' && G.police.stars >= 3) {
-            current.stage = 'lose';
-            G.hud.setObjective(`${def.title}: 3 stars! Now lose the heat — get to 0 stars`);
-          } else if (current.stage === 'lose' && G.police.stars === 0) {
-            finishJob();
-          }
-        } else if (def.id === 'the-pickup') {
-          if (current.stage === 'pickup') {
-            const d = Math.hypot(pp.x - current.target.x, pp.z - current.target.z);
-            if (d < 7) {
-              current.stage = 'dropoff';
-              current.target = { ...G.city.places.marina };
-              showBeacon(current.target.x, current.target.z);
-              G.police.setStars(2);
-              G.hud.setObjective(`${def.title}: Passenger aboard — drop them at the Marina`);
-              G.hud.banner('Passenger aboard! The police are onto you.');
-            }
-          } else if (current.stage === 'dropoff') {
-            const d = Math.hypot(pp.x - current.target.x, pp.z - current.target.z);
-            if (d < 8) finishJob();
-          }
-        } else if (def.id === 'the-big-score') {
-          if (current.stage === 'rob') {
-            const d = Math.hypot(pp.x - current.target.x, pp.z - current.target.z);
-            if (d < 7 && !G.player.inCar) {
-              current.robTimer += dt;
-              G.hud.setObjective(`${def.title}: Robbing the store… ${Math.ceil(5 - current.robTimer)}s — stay in the marker`);
-              if (current.robTimer >= 5) {
-                current.stage = 'escape';
-                current.target = { ...G.city.places.hideout };
-                showBeacon(current.target.x, current.target.z);
-                G.police.setStars(4);
-                G.hud.banner('You got the cash! 4 stars — reach the Hideout!');
-              }
-            } else {
-              current.robTimer = Math.max(0, current.robTimer - dt * 2);
-              G.hud.setObjective(`${def.title}: Rob the Sunrise Mart — stand in the marker`);
-            }
-          } else if (current.stage === 'escape') {
-            const d = Math.hypot(pp.x - current.target.x, pp.z - current.target.z);
-            if (d < 8) finishJob();
+      const active = api.active;
+      const player = G.player;
+      if (active) {
+        if (active.timer > 0) {
+          active.timer -= dt;
+          if (active.timer <= 0) {
+            G.hud.flash(`${active.title} failed — out of time`);
+            api.dropJob();
+            return;
           }
         }
+        const handler = HANDLERS[active.id];
+        if (handler) handler(active, dt);
       }
-
-      // --- Courier side job progress ---
-      if (courier) {
-        const cp = courier.checkpoints[courier.checkpointIndex];
-        const d = Math.hypot(pp.x - cp.x, pp.z - cp.z);
-        if (d < 9) {
-          G.audio.pickup();
-          courier.checkpointIndex += 1;
-          if (courier.checkpointIndex >= courier.checkpoints.length) {
-            G.player.cash += SIDE_PAY;
-            G.hud.banner(`Courier job done — +$${SIDE_PAY}`);
-            G.hud.setCash(G.player.cash);
-            G.save();
-            courier = null;
-            hideBeacon();
-            G.hud.setObjective('Free roam — press M for the next job.');
-          } else {
-            const nxt = courier.checkpoints[courier.checkpointIndex];
-            courier.target = nxt;
-            showBeacon(nxt.x, nxt.z);
-            G.hud.setObjective(`Courier job: Checkpoint 2 of 2 — $${SIDE_PAY} on delivery`);
-          }
-        }
+      // A courier beacon you drive through pays out.
+      if (api.sideJob) {
+        const p = api.sideJob.target;
+        if (Math.hypot(player.pos.x - p.x, player.pos.z - p.z) < 4) api.completeSideJob();
+      }
+      if (api.beacon) {
+        api.beacon.rotation.z += dt * 1.5;
+        api.beacon.scale.setScalar(1 + Math.sin(G.time * 4) * 0.08);
       }
     },
     reset() {
-      next = 0;
-      current = null;
-      courier = null;
-      done = 0;
-      hideBeacon();
-    },
-    loadProgress(savedIndex, savedCompleted) {
-      next = Math.min(savedIndex, JOBS.length);
-      done = savedCompleted;
-      G.hud.setMissions(done, JOBS.length);
+      api.active = null;
+      api.nextIndex = 0;
+      api.done = 0;
+      api.sideJob = null;
+      api.setBeacon(null);
     },
   };
-  return missions;
+
+  // One handler per job id. Each returns nothing; it completes or fails the
+  // job by calling completeJob / dropJob, or moves the job to its next phase.
+  const HANDLERS = {
+    'hot-wheels'(job) {
+      const player = G.player;
+      const garage = { x: 0, z: 20 };
+      if (player.inCar && player.car && Math.hypot(player.pos.x - garage.x, player.pos.z - garage.z) < 8) {
+        api.completeJob();
+      }
+    },
+    'courier-rush'(job) {
+      const player = G.player;
+      if (Math.hypot(player.pos.x - job.target.x, player.pos.z - job.target.z) < 5) {
+        job.checkpointIndex += 1;
+        if (job.checkpointIndex >= job.checkpoints.length) {
+          api.completeJob();
+        } else {
+          job.target = job.checkpoints[job.checkpointIndex];
+          api.setBeacon(job.target.x, job.target.z);
+          const left = job.checkpoints.length - job.checkpointIndex;
+          G.hud.setObjective(`Courier Rush: ${left} checkpoint${left > 1 ? 's' : ''} left — ${Math.ceil(job.timer)}s`);
+          G.audio.pickup();
+        }
+      }
+    },
+    'heat-check'(job) {
+      const wanted = G.police.wanted;
+      if (job.stage === 'raise' && wanted >= 3) {
+        job.stage = 'lose';
+        G.hud.setObjective('Heat Check: Now lose the heat — get to 0 stars');
+      } else if (job.stage === 'lose' && wanted === 0) {
+        api.completeJob();
+      }
+    },
+    'the-pickup'(job) {
+      const player = G.player;
+      if (job.stage === 'start') {
+        if (Math.hypot(player.pos.x - job.target.x, player.pos.z - job.target.z) < 5) {
+          job.stage = 'dropoff';
+          job.target = { x: 280, z: 280 };
+          api.setBeacon(job.target.x, job.target.z);
+          G.hud.setObjective('The Pickup: Passenger aboard — deliver to the Marina');
+          G.audio.pickup();
+          if (G.police.wanted < 2) G.police.addHeat(2, 'Passenger pickup');
+        }
+      } else if (job.stage === 'dropoff') {
+        if (Math.hypot(player.pos.x - job.target.x, player.pos.z - job.target.z) < 8) {
+          api.completeJob();
+        }
+      }
+    },
+    'the-big-score'(job, dt) {
+      const player = G.player;
+      if (job.stage === 'start') {
+        if (Math.hypot(player.pos.x - job.target.x, player.pos.z - job.target.z) < 6) {
+          job.stage = 'rob';
+          job.robTimer = 0;
+          G.hud.setObjective('The Big Score: Rob the store — 0/30s');
+          G.audio.pickup();
+          G.police.addHeat(2, 'Robbery in progress');
+        }
+      } else if (job.stage === 'rob') {
+        // The robbery only progresses while Alex stands in the store; step
+        // outside and the timer drains away twice as fast.
+        const inside = Math.hypot(player.pos.x - job.target.x, player.pos.z - job.target.z) < 6;
+        if (inside) {
+          job.robTimer += dt;
+          G.hud.setObjective(`The Big Score: Rob the store — ${Math.ceil(job.robTimer)}/30s`);
+        } else {
+          job.robTimer = Math.max(0, job.robTimer - dt * 2);
+        }
+        if (job.robTimer >= 30) {
+          job.stage = 'escape';
+          job.target = { x: -280, z: 280 };
+          api.setBeacon(job.target.x, job.target.z);
+          G.hud.setObjective('The Big Score: Lose 4 stars and reach the Hideout');
+          if (G.police.wanted < 4) G.police.addHeat(4 - G.police.wanted, 'The Big Score');
+        }
+      } else if (job.stage === 'escape') {
+        if (G.police.wanted === 0 && Math.hypot(player.pos.x - job.target.x, player.pos.z - job.target.z) < 8) {
+          api.completeJob();
+        }
+      }
+    },
+  };
+  return api;
 }

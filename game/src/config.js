@@ -1,26 +1,63 @@
-// Costa Verde v3 — one place for every number the game tunes by.
-// The city grid, the cars, the wanted level, the missions and the guns all
-// read from here, so a balance change is a single edit, not a hunt.
+// Costa Verde — every number the game tunes by, in one place.
+// The street grid, the cars, the heat, the jobs and the gun all read from
+// here, so rebalancing is one edit instead of a search through the modules.
 
-// --- The street grid -------------------------------------------------------
-// Streets run both ways on a square lattice. The avenues are 70 m apart and
-// the drivable ribbon of each is 14 m wide, which leaves 56 m blocks.
+// --- Mara's jobs -----------------------------------------------------------
+// Five story jobs, in order, plus the courier rate for free-roam runs.
+export const JOBS = [
+  {
+    id: 'hot-wheels',
+    title: 'Hot Wheels',
+    giver: 'Mara',
+    text: 'Mara needs wheels. Take any car off the street and drop it at the garage on Palm Row.',
+    reward: 300,
+  },
+  {
+    id: 'courier-rush',
+    title: 'Courier Rush',
+    giver: 'Mara',
+    text: 'Three drop-offs, ninety seconds on the clock. Hit every checkpoint before time runs out.',
+    reward: 400,
+    limit: 90,
+  },
+  {
+    id: 'heat-check',
+    title: 'Heat Check',
+    giver: 'Mara',
+    text: 'The crew needs to know you can take pressure. Get to 3 stars, then shake the heat off.',
+    reward: 500,
+  },
+  {
+    id: 'the-pickup',
+    title: 'The Pickup',
+    giver: 'Mara',
+    text: 'Collect the passenger on Coral Ave and take them to the marina. Expect company on the way.',
+    reward: 600,
+  },
+  {
+    id: 'the-big-score',
+    title: 'The Big Score',
+    giver: 'Mara',
+    text: 'Rob the Sunrise Mart, then lose a 4-star chase and make the hideout. This is the big one.',
+    reward: 1500,
+  },
+];
+
+export const SIDE_PAY = 150;
+
+// --- Streets ---------------------------------------------------------------
+// Avenues on a square lattice, 70 m apart, with a 14 m drivable ribbon.
+// Everything else in the city is measured off these lines.
 export const GRID_STEP = 70;
 export const GRID_N = 9;
 export const ROAD_HALF = 7;
-export const BLOCK_SPAN = GRID_STEP - ROAD_HALF * 2;
-export const CITY_EDGE = ((GRID_N - 1) / 2) * GRID_STEP + ROAD_HALF;
+export const BLOCK_SPAN = GRID_STEP - 2 * ROAD_HALF;
+export const CITY_EDGE = 4 * GRID_STEP + ROAD_HALF;
 
-export const AVENUES = [];
-for (let i = 0; i < GRID_N; i += 1) {
-  AVENUES.push((i - (GRID_N - 1) / 2) * GRID_STEP);
-}
-// Block centres fall halfway between avenues.
-export const BLOCK_CENTRES = [];
-for (let i = 0; i < GRID_N - 1; i += 1) {
-  BLOCK_CENTRES.push((i - (GRID_N - 2) / 2) * GRID_STEP);
-}
+export const AVENUES = Array.from({ length: GRID_N }, (_, i) => (i - 4) * GRID_STEP);
+export const BLOCK_CENTRES = Array.from({ length: GRID_N - 1 }, (_, i) => (i - 3.5) * GRID_STEP);
 
+// --- Look ------------------------------------------------------------------
 export const SKY = {
   ground: 0x8a7f63,
   sky: 0x9fc8e8,
@@ -67,17 +104,17 @@ export const DRIVE = {
   copMax: 4,
 };
 
-// --- The wanted level ------------------------------------------------------
+// --- Wanted level ----------------------------------------------------------
 export const HEAT = {
   max: 5,
-  quiet: 18, // seconds unnoticed before the first star starts to fall
-  step: 9, // seconds per star lost while hidden
+  quiet: 8, // seconds out of sight before the first star starts to drop
+  step: 6, // seconds per star lost while hidden
   copsPerStar: [0, 1, 2, 2, 3, 4],
-  copTop: 36, // a good driver can always pull away; 5 stars must not outrun them
-  parkClose: 8, // a cop this close to a player on foot slows to a stop, so the bust can land
+  copTop: 36, // capped below the player's top speed, so a clean getaway works
+  parkClose: 8, // a cop this close to a player on foot eases to a stop, so the bust lands
   bustRange: 7,
   bustTime: 3, // seconds inside bustRange to get busted
-  replaceDelay: 8, // seconds before a destroyed police car is replaced
+  replaceDelay: 8, // seconds before a wrecked police car is replaced
 };
 
 // --- The pistol ------------------------------------------------------------
@@ -89,59 +126,16 @@ export const GUN = {
   pedHp: 30,
 };
 
-// --- The story -------------------------------------------------------------
-export const JOBS = [
-  {
-    id: 'hot-wheels',
-    title: 'Hot Wheels',
-    giver: 'Mara',
-    text: 'Mara needs a ride. Steal any car and bring it to the garage on Palm Row.',
-    reward: 300,
-  },
-  {
-    id: 'courier-rush',
-    title: 'Courier Rush',
-    giver: 'Mara',
-    text: 'Three drop-offs, ninety seconds. Hit every checkpoint before the clock runs out.',
-    reward: 400,
-    limit: 90,
-  },
-  {
-    id: 'heat-check',
-    title: 'Heat Check',
-    giver: 'Mara',
-    text: 'The crew needs to know you can handle pressure. Get to 3 stars, then lose the heat.',
-    reward: 500,
-  },
-  {
-    id: 'the-pickup',
-    title: 'The Pickup',
-    giver: 'Mara',
-    text: 'Pick up the passenger on Coral Ave and drop them at the marina. Expect company.',
-    reward: 600,
-  },
-  {
-    id: 'the-big-score',
-    title: 'The Big Score',
-    giver: 'Mara',
-    text: 'Rob the Sunrise Mart, then shake a 4-star chase and reach the hideout. This is the big one.',
-    reward: 1500,
-  },
-];
-
-export const SIDE_PAY = 150;
-
-// --- Deterministic random --------------------------------------------------
-// xorshift32: a tiny generator with a full 32-bit period, so a screenshot
-// seed always rebuilds the same city and the same traffic.
+// --- Seeded random ---------------------------------------------------------
+// mulberry32: small, fast, and deterministic, so a screenshot seed rebuilds
+// the same city, the same traffic and the same speckles every time.
 export function makeRng(seed) {
-  let s = (seed >>> 0) || 0x9e3779b9;
+  let a = (seed >>> 0) || 0x6d2b79f5;
   return function rng() {
-    s ^= s << 13;
-    s ^= s >>> 17;
-    s ^= s << 5;
-    s >>>= 0;
-    return s / 4294967296;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), a | 1);
+    t = (t + Math.imul(t ^ (t >>> 7), t | 61)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
@@ -151,4 +145,15 @@ export function pickOne(rng, list) {
 
 export function between(rng, lo, hi) {
   return lo + rng() * (hi - lo);
+}
+
+export function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+// Keep an angle inside (-PI, PI] so turns always take the short way round.
+export function wrapAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a <= -Math.PI) a += Math.PI * 2;
+  return a;
 }

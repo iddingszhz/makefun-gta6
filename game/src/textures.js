@@ -1,138 +1,127 @@
-// Costa Verde v3 — every texture is painted on a canvas at boot, so the
-// game ships no image files and loads nothing over the network. The seeded
-// RNG draws the speckles, so a seed rebuilds the same walls and roads.
+// Costa Verde — every texture is drawn on a canvas when the game boots, so
+// the game ships no image files and fetches nothing over the network. The
+// seeded RNG draws the speckles, so one seed always paints the same walls.
 
 import * as THREE from 'three';
 
-function paint(w, h, fn) {
+// Draw on a fresh canvas, then hand it to Three as a texture.
+function canvasTex(w, h, draw) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
-  fn(c.getContext('2d'), w, h);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
+  draw(c.getContext('2d'), w, h);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
 }
 
-function tile(t) {
-  t.wrapS = THREE.RepeatWrapping;
-  t.wrapT = THREE.RepeatWrapping;
-  return t;
+// A scatter of darker dots: concrete grain, sand, asphalt grit. Every
+// texture uses this, so the speckle density is one number to tune.
+function speckle(ctx, rng, count, w, h, colour, alpha = 0.08) {
+  ctx.fillStyle = colour;
+  ctx.globalAlpha = alpha;
+  for (let i = 0; i < count; i += 1) {
+    const s = 1 + rng() * 2;
+    ctx.fillRect(rng() * w, rng() * h, s, s);
+  }
+  ctx.globalAlpha = 1;
 }
 
-// A building face: flat wall, a grid of windows, a few warmly lit, and a
-// dark shopfront band along the ground floor.
-export function facadeTexture(rng, base, rows, cols) {
-  return paint(256, 256, (ctx, w, h) => {
+export function sandTexture(rng) {
+  return canvasTex(256, 256, (ctx, w, h) => {
+    ctx.fillStyle = '#c9b088';
+    ctx.fillRect(0, 0, w, h);
+    // Soft dunes: wide, pale arcs.
+    for (let i = 0; i < 10; i += 1) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.beginPath();
+      ctx.ellipse(rng() * w, rng() * h, 40 + rng() * 60, 12 + rng() * 20, rng() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    speckle(ctx, rng, 900, w, h, '#8a7f63', 0.12);
+  });
+}
+
+export function roadTexture(rng) {
+  return canvasTex(256, 256, (ctx, w, h) => {
+    ctx.fillStyle = '#4a4d52';
+    ctx.fillRect(0, 0, w, h);
+    // Centre dashes down the middle of the tile.
+    ctx.fillStyle = '#e8e0c0';
+    for (let y = 0; y < h; y += 64) ctx.fillRect(w / 2 - 3, y + 8, 6, 34);
+    speckle(ctx, rng, 700, w, h, '#000000', 0.1);
+  });
+}
+
+export function pavementTexture(rng) {
+  return canvasTex(256, 256, (ctx, w, h) => {
+    ctx.fillStyle = '#b8b0a0';
+    ctx.fillRect(0, 0, w, h);
+    // Paving joints: a grid of faint lines.
+    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+    ctx.lineWidth = 2;
+    for (let x = 0; x <= w; x += 32) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= h; y += 32) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    speckle(ctx, rng, 500, w, h, '#000000', 0.06);
+  });
+}
+
+export function facadeTexture(rng) {
+  return canvasTex(256, 256, (ctx, w, h) => {
+    // A pale plaster wall with a grid of dark windows and a few lit ones.
+    const base = ['#d8cfc0', '#c8b8a8', '#b8c8d8', '#e8d8b8'][Math.floor(rng() * 4)];
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, w, h);
-    // Weathering: faint vertical streaks so big walls do not read flat.
-    ctx.globalAlpha = 0.07;
-    for (let i = 0; i < 28; i += 1) {
-      ctx.fillStyle = rng() > 0.5 ? '#000' : '#fff';
-      ctx.fillRect(Math.floor(rng() * w), 0, 2 + rng() * 9, h);
-    }
-    ctx.globalAlpha = 1;
-    const mx = 16;
-    const my = 16;
-    const cw = (w - mx * 2) / cols;
-    const ch = (h - my * 2) / rows;
-    for (let r = 0; r < rows; r += 1) {
-      for (let c = 0; c < cols; c += 1) {
-        const x = mx + c * cw + cw * 0.22;
-        const y = my + r * ch + ch * 0.24;
-        const ww = cw * 0.56;
-        const wh = ch * 0.52;
-        const roll = rng();
-        ctx.fillStyle = roll < 0.26 ? '#ffd98a' : roll < 0.44 ? '#9fc4e8' : '#20242e';
-        ctx.fillRect(x, y, ww, wh);
-        ctx.fillStyle = 'rgba(255,255,255,0.28)';
-        ctx.fillRect(x, y, ww, 2);
+    for (let row = 0; row < 4; row += 1) {
+      for (let col = 0; col < 4; col += 1) {
+        const x = 18 + col * 60;
+        const y = 18 + row * 60;
+        ctx.fillStyle = rng() > 0.85 ? '#ffe08a' : '#2a3550';
+        ctx.fillRect(x, y, 34, 42);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(x, y, 34, 4);
       }
     }
-    ctx.fillStyle = 'rgba(18,20,28,0.85)';
-    ctx.fillRect(0, h - 26, w, 26);
+    speckle(ctx, rng, 300, w, h, '#000000', 0.05);
   });
 }
 
-// Asphalt with a dashed centre line and pale edge lines, tiled along a road.
-export function roadTexture(rng) {
-  return tile(paint(128, 128, (ctx, w, h) => {
-    ctx.fillStyle = '#33363d';
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    for (let i = 0; i < 220; i += 1) {
-      ctx.fillRect(rng() * w, rng() * h, 2, 2);
-    }
-    ctx.fillStyle = '#d8c25a';
-    ctx.fillRect(w / 2 - 2, 10, 4, 38);
-    ctx.fillRect(w / 2 - 2, 74, 4, 38);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillRect(5, 0, 3, h);
-    ctx.fillRect(w - 8, 0, 3, h);
-  }));
-}
-
-// Pale pavement tiles with a darker joint grid.
-export function pavementTexture(rng) {
-  return tile(paint(128, 128, (ctx, w, h) => {
-    ctx.fillStyle = '#b9ac93';
-    ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(90,80,60,0.5)';
-    ctx.lineWidth = 2;
-    for (let i = 0; i <= 4; i += 1) {
-      ctx.beginPath();
-      ctx.moveTo((i * w) / 4, 0);
-      ctx.lineTo((i * w) / 4, h);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, (i * h) / 4);
-      ctx.lineTo(w, (i * h) / 4);
-      ctx.stroke();
-    }
-    ctx.fillStyle = 'rgba(255,255,255,0.09)';
-    for (let i = 0; i < 130; i += 1) {
-      ctx.fillRect(rng() * w, rng() * h, 2, 2);
-    }
-  }));
-}
-
-// Warm sand for the beach and the marina edge.
-export function sandTexture(rng) {
-  return paint(128, 128, (ctx, w, h) => {
-    ctx.fillStyle = '#d9c48f';
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = 'rgba(160,130,80,0.28)';
-    for (let i = 0; i < 280; i += 1) {
-      ctx.fillRect(rng() * w, rng() * h, 2, 1);
-    }
-  });
-}
-
-// A rooftop from above: flat grey, a darker rim, a vent box and a skylight.
 export function roofTexture(rng) {
-  return paint(128, 128, (ctx, w, h) => {
-    ctx.fillStyle = '#6f6a63';
+  return canvasTex(128, 128, (ctx, w, h) => {
+    ctx.fillStyle = '#8a4a3a';
     ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = '#4c4844';
-    ctx.lineWidth = 8;
-    ctx.strokeRect(4, 4, w - 8, h - 8);
-    ctx.fillStyle = '#8b857c';
-    ctx.fillRect(18 + rng() * 42, 18 + rng() * 42, 26, 18);
-    ctx.fillStyle = '#55504a';
-    ctx.fillRect(72 + rng() * 18, 62 + rng() * 28, 14, 14);
+    // Terracotta tiles: overlapping arcs.
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 2;
+    for (let y = 0; y < h; y += 16) {
+      for (let x = 0; x < w; x += 16) {
+        ctx.beginPath();
+        ctx.arc(x + 8, y + 8, 8, 0, Math.PI);
+        ctx.stroke();
+      }
+    }
+    speckle(ctx, rng, 200, w, h, '#000000', 0.08);
   });
 }
 
-// Bright striped awning for a shopfront, in one of four colours.
 export function awningTexture(rng) {
-  const colours = ['#d94f3d', '#2e7f9e', '#e8a13a', '#4f9e57'];
-  const colour = colours[Math.floor(rng() * colours.length)];
-  return paint(128, 32, (ctx, w, h) => {
+  return canvasTex(128, 128, (ctx, w, h) => {
+    // A striped shop awning: alternating coral and cream.
     for (let i = 0; i < 8; i += 1) {
-      ctx.fillStyle = i % 2 === 0 ? colour : '#f5efe0';
-      ctx.fillRect((i * w) / 8, 0, w / 8, h);
+      ctx.fillStyle = i % 2 === 0 ? '#d94f3d' : '#f0e8d8';
+      ctx.fillRect(i * 16, 0, 16, h);
     }
+    speckle(ctx, rng, 100, w, h, '#000000', 0.05);
   });
 }

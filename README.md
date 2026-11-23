@@ -4,28 +4,27 @@
 [![rank](https://make.fun/badge/gta6-01/iddingszhz/makefun-gta6/rank.svg)](https://make.fun/c/gta6-01)
 [![reward](https://make.fun/badge/gta6-01/iddingszhz/makefun-gta6/reward.svg)](https://make.fun/c/gta6-01)
 
-A complete open-world crime game that runs fully offline in a desktop
-browser. It borrows nothing from any commercial game — no names, no
-characters, no maps, no assets. The city is its own: **Costa Verde**, a
-fictional coastal town in the sun.
+Costa Verde is a full open-world crime game that plays entirely offline in a
+desktop browser. Nothing in it comes from a commercial game: the city, the
+people, the cars, the story and the art are all original. The setting is
+**Costa Verde**, a fictional town on a sunny coast.
 
-## Premise
+You play Alex Vega, back in town with no money and one person still willing
+to take his calls: Mara. He steals cars, takes her jobs, keeps the police
+off his back, and builds toward a single big score.
 
-Alex Vega returns to Costa Verde broke, with a single contact left: Mara.
-To get back on his feet he steals cars, runs her jobs, stays ahead of the
-police, and works toward one big score.
+## How to play
 
-## Running it
-
-Any static server will do. The one in the repo is the quickest way:
+Any static file server works. The one included in this repo is the fastest
+way in:
 
 ```sh
 node serve.ts
 # then open http://localhost:8080
 ```
 
-No build step, no packages to install for the game itself, no network
-requests once the page loads. Three.js is vendored at
+There is no build step and nothing to install to run the game, and once the
+page has loaded it makes no network requests at all. Three.js is vendored at
 `game/vendor/three.module.min.js`.
 
 ## Controls
@@ -39,40 +38,43 @@ requests once the page loads. Three.js is vendored at
 | R | Reload |
 | Mouse drag / wheel | Orbit the camera / zoom |
 | Space | Handbrake |
-| M | Start the next story job (or a courier side job once the story is done) |
+| M | Start the next story job |
 | N | Start a courier side job |
 | P / Esc | Pause |
 
-## What the game has
+## Inside the game
 
-- **A living 3D city.** A 9×9 street grid with procedural buildings (lit
-  windows, shop awnings), palm trees, streetlights, a beach and a marina.
-  Everything is generated from a seed, so `?seed=N` rebuilds the same city.
-- **On foot and behind the wheel.** A third-person character with arcade
-  driving, traffic that follows the street grid, and parked cars waiting to
-  be stolen.
-- **A wanted level, 0–5 stars.** Stealing, hitting pedestrians and ramming
-  police cars raise the heat. Police cars chase and ram; stay out of sight
-  and the heat cools off. Get wasted or busted and the run ends.
-- **Five story jobs from Mara.** Steal and deliver a car; a timed courier
-  rush; reach 3 stars and then lose the heat; a pickup under pursuit; and
-  the big score — rob the Sunrise Mart and escape a 4-star chase. Courier
-  side jobs keep paying in free roam.
-- **Combat.** A hitscan pistol with a muzzle flash, a magazine and a reload;
-  pedestrians flee from gunfire and the police notice.
-- **A full HUD.** Minimap with the player arrow, police dots and the mission
+- **A city that feels alive.** Nine avenues by nine, with buildings that
+  grow lit windows and striped awnings, palms and lamps along the streets,
+  and a beach and marina at the edges. It is all generated from a seed, so
+  `?seed=N` rebuilds the same city every time.
+- **Feet and wheels.** A third-person character on foot and arcade driving
+  behind the wheel, with traffic that follows the street grid and parked
+  cars waiting to be taken.
+- **Heat, 0–5 stars.** Stealing a car, knocking a pedestrian down or
+  ramming a police car raises the wanted level. Police cars chase and ram;
+  break line of sight and the heat cools off. Get wasted or busted and the
+  run is over.
+- **Five jobs from Mara.** Deliver a stolen car to the garage; a timed
+  courier rush across three checkpoints; reach 3 stars and then shake the
+  heat off; a pickup under pursuit; and the big score — rob the Sunrise
+  Mart and escape a 4-star chase. Courier side jobs keep paying between
+  story jobs.
+- **Combat.** A hitscan pistol with a visible tracer, a magazine and a
+  reload. Pedestrians run from gunfire, and the police take notice.
+- **The HUD.** A minimap with the player arrow, police dots and the mission
   beacon; wanted stars; cash; health; speed; an objective line; a clock.
-- **Synthesized sound.** Engine hum, a police siren, gunshots, crashes and
-  pickup blips, all made with WebAudio. No audio files.
+- **Sound, synthesized.** An engine hum, a police siren, gunshots, crashes
+  and pickup blips, all made with WebAudio. There are no audio files.
 - **A save.** Cash and completed jobs persist in localStorage.
 
 ## Screenshots
 
 The four staged frames in `screenshots/` are real renders of the game,
-staged with `?shot=chase|drive|mission|foot&seed=N`, which plays the game
-forward into the frame instead of posing a diorama.
+produced with `?shot=chase|drive|mission|foot&seed=N`, which plays the game
+forward into the frame rather than posing a diorama.
 
-## Layout
+## File layout
 
 - `game/index.html` — page, HUD markup, screens, import map
 - `game/src/main.js` — boot, the loop, screens, save, screenshot staging

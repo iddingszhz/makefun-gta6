@@ -1,142 +1,153 @@
-// Costa Verde v3 — all sound is synthesized with WebAudio. No audio files,
-// nothing loaded over the network. Created lazily on the first user gesture
-// so browsers allow it.
+// Costa Verde — every sound is synthesized with WebAudio. No audio files,
+// nothing fetched over the network. The audio context is built lazily on
+// the first user gesture, so browsers allow it.
 
 export function createAudio() {
-  let actx = null;
-  let bus = null;
-  let engOsc = null;
-  let engGain = null;
-  let sirOsc = null;
-  let sirGain = null;
-  let sirLfo = null;
-  let silent = false;
+  let ctx = null;
+  let master = null;
+  let engine = null; // { osc, gain }
+  let siren = null; // { osc, gain, lfo }
+  let muted = false;
 
-  function boot() {
-    if (actx) return true;
+  function ensure() {
+    if (ctx) return true;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
-      actx = new AC();
-      bus = actx.createGain();
-      bus.gain.value = 0.5;
-      bus.connect(actx.destination);
-      // Engine: a low sawtooth whose pitch follows speed, kept quiet.
-      engOsc = actx.createOscillator();
-      engOsc.type = 'sawtooth';
-      engOsc.frequency.value = 55;
-      engGain = actx.createGain();
-      engGain.gain.value = 0;
-      const engFilter = actx.createBiquadFilter();
-      engFilter.type = 'lowpass';
-      engFilter.frequency.value = 420;
-      engOsc.connect(engFilter);
-      engFilter.connect(engGain);
-      engGain.connect(bus);
-      engOsc.start();
-      // Siren: a sine that swings between two tones on an LFO.
-      sirOsc = actx.createOscillator();
-      sirOsc.type = 'sine';
-      sirOsc.frequency.value = 720;
-      sirGain = actx.createGain();
-      sirGain.gain.value = 0;
-      sirLfo = actx.createOscillator();
-      sirLfo.type = 'square';
-      sirLfo.frequency.value = 0.7;
-      const lfoDepth = actx.createGain();
-      lfoDepth.gain.value = 180;
-      sirLfo.connect(lfoDepth);
-      lfoDepth.connect(sirOsc.frequency);
-      sirOsc.connect(sirGain);
-      sirGain.connect(bus);
-      sirOsc.start();
-      sirLfo.start();
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = 0.5;
+      master.connect(ctx.destination);
+      engine = makeLoop('sawtooth', 55, 420, 0);
+      siren = makeSiren();
     } catch {
-      actx = null;
+      ctx = null;
       return false;
     }
     return true;
   }
 
-  function burst(seconds, volume, cutoff) {
-    if (!boot()) return;
-    const len = Math.floor(actx.sampleRate * seconds);
-    const buf = actx.createBuffer(1, len, actx.sampleRate);
+  // A looping voice: oscillator -> lowpass -> gain -> master.
+  function makeLoop(type, freq, cutoff, level) {
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = freq;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = cutoff;
+    const gain = ctx.createGain();
+    gain.gain.value = level;
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(master);
+    osc.start();
+    return { osc, gain };
+  }
+
+  // The siren: a sine whose pitch swings on a square-wave LFO.
+  function makeSiren() {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 720;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'square';
+    lfo.frequency.value = 0.7;
+    const depth = ctx.createGain();
+    depth.gain.value = 180;
+    lfo.connect(depth);
+    depth.connect(osc.frequency);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start();
+    lfo.start();
+    return { osc, gain, lfo };
+  }
+
+  // A burst of filtered noise that decays: gunshots, crashes, thuds.
+  function noiseBurst(seconds, volume, cutoff) {
+    if (!ensure()) return;
+    const len = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < len; i += 1) {
       data[i] = (Math.random() * 2 - 1) * (1 - i / len);
     }
-    const src = actx.createBufferSource();
+    const src = ctx.createBufferSource();
     src.buffer = buf;
-    const filter = actx.createBiquadFilter();
+    const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = cutoff;
-    const gain = actx.createGain();
+    const gain = ctx.createGain();
     gain.gain.value = volume;
     src.connect(filter);
     filter.connect(gain);
-    gain.connect(bus);
+    gain.connect(master);
     src.start();
   }
 
-  function blip(freq, seconds, volume, shape = 'sine') {
-    if (!boot()) return;
-    const osc = actx.createOscillator();
+  // A short tone that fades out: blips, chimes, pickup notes.
+  function tone(freq, seconds, volume, shape = 'sine') {
+    if (!ensure()) return;
+    const osc = ctx.createOscillator();
     osc.type = shape;
     osc.frequency.value = freq;
-    const gain = actx.createGain();
-    gain.gain.setValueAtTime(volume, actx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + seconds);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + seconds);
     osc.connect(gain);
-    gain.connect(bus);
+    gain.connect(master);
     osc.start();
-    osc.stop(actx.currentTime + seconds);
+    osc.stop(ctx.currentTime + seconds);
+  }
+
+  function arpeggio(notes, step, seconds, volume, shape = 'triangle') {
+    notes.forEach((f, i) => {
+      setTimeout(() => tone(f, seconds, volume, shape), i * step);
+    });
   }
 
   return {
     unlock() {
-      if (boot() && actx.state === 'suspended') actx.resume();
+      if (ensure() && ctx.state === 'suspended') ctx.resume();
     },
-    // Called every frame: speed in m/s, 0 when on foot.
+    // Called every frame: speed in m/s (0 on foot) and the wanted level.
     update(speed, wanted) {
-      if (!actx) return;
-      const level = silent ? 0 : Math.min(0.09, 0.015 + speed * 0.0022);
-      engGain.gain.setTargetAtTime(speed > 0.5 ? level : 0, actx.currentTime, 0.1);
-      engOsc.frequency.setTargetAtTime(52 + speed * 3.2, actx.currentTime, 0.08);
-      sirGain.gain.setTargetAtTime(silent || wanted < 1 ? 0 : 0.045, actx.currentTime, 0.2);
+      if (!ctx) return;
+      const level = muted ? 0 : Math.min(0.09, 0.015 + speed * 0.0022);
+      engine.gain.gain.setTargetAtTime(speed > 0.5 ? level : 0, ctx.currentTime, 0.1);
+      engine.osc.frequency.setTargetAtTime(52 + speed * 3.2, ctx.currentTime, 0.08);
+      siren.gain.gain.setTargetAtTime(muted || wanted < 1 ? 0 : 0.045, ctx.currentTime, 0.2);
     },
     gunshot() {
-      burst(0.16, 0.5, 2600);
-      blip(180, 0.08, 0.25, 'square');
+      noiseBurst(0.16, 0.5, 2600);
+      tone(180, 0.08, 0.25, 'square');
     },
     crash(power = 1) {
-      burst(0.25, Math.min(0.6, 0.25 * power), 500);
-      blip(70, 0.2, 0.3, 'sine');
+      noiseBurst(0.25, Math.min(0.6, 0.25 * power), 500);
+      tone(70, 0.2, 0.3, 'sine');
     },
     pickup() {
-      blip(880, 0.09, 0.2);
-      setTimeout(() => blip(1320, 0.12, 0.2), 90);
+      tone(880, 0.09, 0.2);
+      setTimeout(() => tone(1320, 0.12, 0.2), 90);
     },
     missionDone() {
-      [523, 659, 784, 1047].forEach((f, i) => {
-        setTimeout(() => blip(f, 0.22, 0.22, 'triangle'), i * 110);
-      });
+      arpeggio([440, 554, 659, 880], 110, 0.22, 0.22);
     },
     busted() {
-      [392, 311, 233].forEach((f, i) => {
-        setTimeout(() => blip(f, 0.3, 0.22, 'triangle'), i * 160);
-      });
+      arpeggio([392, 311, 233], 160, 0.3, 0.22);
     },
-    // Silence the engine and siren loops (the game-over screen has no update
-    // loop, so without this the last loop gains would drone on forever).
+    // Silence the engine and siren loops. The game-over screen has no
+    // update loop, so without this the last loop gains would drone forever.
     stop() {
-      if (!actx) return;
-      engGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
-      sirGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+      if (!ctx) return;
+      engine.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+      siren.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
     },
     toggleMute() {
-      silent = !silent;
-      if (bus) bus.gain.value = silent ? 0 : 0.5;
-      return silent;
+      muted = !muted;
+      if (master) master.gain.value = muted ? 0 : 0.5;
+      return muted;
     },
   };
 }

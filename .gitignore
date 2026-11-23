@@ -1,4 +1,6 @@
 # Build output from `node main.ts` (MAKEFUN_OUTPUT_DIR) — never committed.
 out/
-# Local editor and OS clutter.
+# Local playtest output and editor/OS clutter.
+out-*/
 .DS_Store
+*.log
